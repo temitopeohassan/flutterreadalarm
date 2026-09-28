@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../models/reading_alarm.dart';
 import '../theme/app_colors.dart';
 import 'common.dart';
@@ -126,8 +127,10 @@ class _ImportSheetState extends State<ImportSheet> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
-              textStyle:
-                  const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+              textStyle: const TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600),
             ),
           ),
         ),

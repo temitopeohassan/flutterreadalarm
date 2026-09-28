@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../theme/app_colors.dart';
 
 /// White rounded card with the warm soft shadow used across the app.
@@ -22,7 +23,8 @@ class AppCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
-          BoxShadow(color: AppColors.shadow, blurRadius: 14, offset: Offset(0, 4)),
+          BoxShadow(
+              color: AppColors.shadow, blurRadius: 14, offset: Offset(0, 4)),
         ],
       ),
       child: Material(
@@ -39,7 +41,8 @@ class AppCard extends StatelessWidget {
 }
 
 class PrimaryButton extends StatelessWidget {
-  const PrimaryButton({super.key, required this.label, this.onPressed, this.icon});
+  const PrimaryButton(
+      {super.key, required this.label, this.onPressed, this.icon});
 
   final String label;
   final VoidCallback? onPressed;
@@ -55,13 +58,21 @@ class PrimaryButton extends StatelessWidget {
         style: FilledButton.styleFrom(
           backgroundColor: AppColors.orange,
           disabledBackgroundColor: AppColors.switchOff,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          textStyle: const TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (icon != null) ...[Icon(icon, size: 20), const SizedBox(width: 8)],
+            if (icon != null) ...[
+              Icon(icon, size: 20),
+              const SizedBox(width: 8)
+            ],
             Text(label),
           ],
         ),
@@ -109,7 +120,8 @@ class IconBadge extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: const BoxDecoration(color: AppColors.peach, shape: BoxShape.circle),
+      decoration:
+          const BoxDecoration(color: AppColors.peach, shape: BoxShape.circle),
       child: Icon(icon, size: size * 0.46, color: AppColors.orange),
     );
   }

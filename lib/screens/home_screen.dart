@@ -13,7 +13,8 @@ import 'set_alarm_screen.dart';
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
-  static Future<void> openEditor(BuildContext context, {ReadingAlarm? existing}) async {
+  static Future<void> openEditor(BuildContext context,
+      {ReadingAlarm? existing}) async {
     final state = AppScope.of(context);
     if (existing == null && !state.canAddAlarm) {
       await PaywallScreen.open(context);
@@ -51,7 +52,8 @@ class HomeScreen extends StatelessWidget {
                           builder: (_) => ReadingReminderScreen(alarm: next),
                         ),
                       ),
-              icon: const Icon(Icons.notifications_rounded, color: Colors.white),
+              icon:
+                  const Icon(Icons.notifications_rounded, color: Colors.white),
             ),
             trailing: _AddButton(onTap: () => openEditor(context)),
           ),
@@ -166,7 +168,8 @@ class _AlarmCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
-          BoxShadow(color: AppColors.shadow, blurRadius: 14, offset: Offset(0, 4)),
+          BoxShadow(
+              color: AppColors.shadow, blurRadius: 14, offset: Offset(0, 4)),
         ],
       ),
       child: Material(

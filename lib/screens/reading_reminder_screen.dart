@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../models/reading_alarm.dart';
 import '../state/app_state.dart';
 import '../widgets/common.dart';
@@ -62,7 +63,8 @@ class ReadingReminderScreen extends StatelessWidget {
                         ),
                       ),
                       onSnooze: () {
-                        showSnack(context, 'Snoozed. Reading starts in 10 minutes.');
+                        showSnack(
+                            context, 'Snoozed. Reading starts in 10 minutes.');
                         Navigator.of(context).maybePop();
                       },
                     ),
@@ -140,8 +142,13 @@ class _AlarmCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(10));
-    const labelStyle = TextStyle(fontSize: 15, fontWeight: FontWeight.w600);
+    final shape =
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(10));
+    const labelStyle = TextStyle(
+      fontFamily: AppTheme.fontFamily,
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+    );
 
     return Container(
       width: double.infinity,
@@ -166,7 +173,8 @@ class _AlarmCard extends StatelessWidget {
           Text(
             alarm.book.title,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            style:
+                const TextStyle(fontSize: 14, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 18),
           Row(
@@ -194,7 +202,8 @@ class _AlarmCard extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.orange,
                       backgroundColor: AppColors.surface,
-                      side: const BorderSide(color: AppColors.orange, width: 1.4),
+                      side:
+                          const BorderSide(color: AppColors.orange, width: 1.4),
                       shape: shape,
                       textStyle: labelStyle,
                     ),

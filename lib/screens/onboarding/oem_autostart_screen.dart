@@ -55,7 +55,8 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
-        const Center(child: IconBadge(icon: Icons.phone_android_rounded, size: 96)),
+        const Center(
+            child: IconBadge(icon: Icons.phone_android_rounded, size: 96)),
         const SizedBox(height: 20),
         const Text(
           'One more step for your phone',
@@ -71,7 +72,8 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
           'Some phone brands close apps in the background. Pick yours and '
           'follow the steps.',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 15, height: 1.45, color: AppColors.textSecondary),
+          style: TextStyle(
+              fontSize: 15, height: 1.45, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 20),
         Wrap(
@@ -91,7 +93,8 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
                   color: brand == _brand ? AppColors.orange : AppColors.border,
                 ),
                 labelStyle: TextStyle(
-                  color: brand == _brand ? Colors.white : AppColors.textSecondary,
+                  color:
+                      brand == _brand ? Colors.white : AppColors.textSecondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -103,7 +106,8 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
             children: [
               for (var i = 0; i < steps.length; i++)
                 Padding(
-                  padding: EdgeInsets.only(bottom: i == steps.length - 1 ? 0 : 14),
+                  padding:
+                      EdgeInsets.only(bottom: i == steps.length - 1 ? 0 : 14),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

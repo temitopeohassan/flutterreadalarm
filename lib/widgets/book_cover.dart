@@ -27,7 +27,8 @@ class BookCover extends StatelessWidget {
           colors: book.coverColors,
         ),
         boxShadow: const [
-          BoxShadow(color: AppColors.shadow, blurRadius: 6, offset: Offset(1, 3)),
+          BoxShadow(
+              color: AppColors.shadow, blurRadius: 6, offset: Offset(1, 3)),
         ],
       ),
       alignment: Alignment.center,

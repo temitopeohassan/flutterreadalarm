@@ -33,7 +33,8 @@ class LibraryScreen extends StatelessWidget {
         title: const Text('Rename book'),
         content: TextField(controller: controller, autofocus: true),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
             child: const Text('Rename'),
@@ -53,10 +54,13 @@ class LibraryScreen extends StatelessWidget {
         content: Text(
             '"${book.title}" and your progress will be removed. Alarms using it will be turned off.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: AppColors.orangeDark)),
+            child: const Text('Delete',
+                style: TextStyle(color: AppColors.orangeDark)),
           ),
         ],
       ),
@@ -89,7 +93,8 @@ class LibraryScreen extends StatelessWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const IconBadge(icon: Icons.local_library_rounded, size: 96),
+                          const IconBadge(
+                              icon: Icons.local_library_rounded, size: 96),
                           const SizedBox(height: 16),
                           const Text(
                             'Your library is empty. Add a PDF or EPUB to start.',
@@ -172,12 +177,14 @@ class _BookRow extends StatelessWidget {
                   book.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   '${book.author}  •  ${book.format}',
-                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 10),
                 ProgressBar(value: book.progress),
@@ -186,14 +193,16 @@ class _BookRow extends StatelessWidget {
                   book.lastReadAt == null
                       ? '$pct%  •  Not started'
                       : '$pct%  •  ${relativeDay(book.lastReadAt!)}',
-                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                  style:
+                      const TextStyle(fontSize: 12, color: AppColors.textMuted),
                 ),
               ],
             ),
           ),
           PopupMenuButton<String>(
             tooltip: 'Book options',
-            icon: const Icon(Icons.more_vert_rounded, color: AppColors.textMuted),
+            icon:
+                const Icon(Icons.more_vert_rounded, color: AppColors.textMuted),
             onSelected: (v) => v == 'rename' ? onRename() : onDelete(),
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'rename', child: Text('Rename')),

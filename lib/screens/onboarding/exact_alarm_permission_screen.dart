@@ -27,9 +27,8 @@ class ExactAlarmPermissionScreen extends StatelessWidget {
       },
       secondaryLabel: granted ? null : 'Skip for now',
       onSecondary: onNext,
-      skipConsequence: granted
-          ? null
-          : 'Without this, alarms can start late or not at all.',
+      skipConsequence:
+          granted ? null : 'Without this, alarms can start late or not at all.',
     );
   }
 }

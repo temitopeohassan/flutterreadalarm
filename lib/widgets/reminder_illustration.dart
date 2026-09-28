@@ -28,18 +28,21 @@ class _BookSunPainter extends CustomPainter {
     // Peach wash
     final wash = Paint()..color = AppColors.peach;
     canvas.drawOval(
-      Rect.fromCenter(center: Offset(w * 0.5, h * 0.62), width: w * 0.9, height: h * 0.62),
+      Rect.fromCenter(
+          center: Offset(w * 0.5, h * 0.62), width: w * 0.9, height: h * 0.62),
       wash,
     );
     canvas.drawOval(
-      Rect.fromCenter(center: Offset(w * 0.3, h * 0.5), width: w * 0.45, height: h * 0.45),
+      Rect.fromCenter(
+          center: Offset(w * 0.3, h * 0.5), width: w * 0.45, height: h * 0.45),
       wash,
     );
 
     // Sun + rays
     final sunCenter = Offset(w * 0.5, h * 0.16);
     final sunR = w * 0.07;
-    canvas.drawCircle(sunCenter, sunR, Paint()..color = const Color(0xFFF7A868));
+    canvas.drawCircle(
+        sunCenter, sunR, Paint()..color = const Color(0xFFF7A868));
     final ray = Paint()
       ..color = const Color(0xFFF7A868)
       ..strokeWidth = 2
@@ -54,8 +57,10 @@ class _BookSunPainter extends CustomPainter {
     }
 
     // Leaves
-    _leaf(canvas, Offset(w * 0.12, h * 0.42), -0.5, w * 0.1, const Color(0xFFB9C4A6));
-    _leaf(canvas, Offset(w * 0.9, h * 0.38), 0.6, w * 0.1, const Color(0xFFB9C4A6));
+    _leaf(canvas, Offset(w * 0.12, h * 0.42), -0.5, w * 0.1,
+        const Color(0xFFB9C4A6));
+    _leaf(canvas, Offset(w * 0.9, h * 0.38), 0.6, w * 0.1,
+        const Color(0xFFB9C4A6));
     _leaf(canvas, Offset(w * 0.8, h * 0.2), 0.2, w * 0.05, AppColors.orange);
 
     // Book
@@ -65,18 +70,23 @@ class _BookSunPainter extends CustomPainter {
     final pageBottom = h * 0.82;
     final shadow = Paint()..color = const Color(0x22A0522D);
     canvas.drawOval(
-      Rect.fromCenter(center: Offset(w * 0.5, pageBottom + 6), width: bookW * 2.1, height: 14),
+      Rect.fromCenter(
+          center: Offset(w * 0.5, pageBottom + 6),
+          width: bookW * 2.1,
+          height: 14),
       shadow,
     );
 
     final cover = Paint()..color = const Color(0xFFD98B55);
     final coverPath = Path()
       ..moveTo(spine.dx, pageBottom + 4)
-      ..quadraticBezierTo(spine.dx - bookW * 0.5, pageBottom - 6, spine.dx - bookW - 6, pageBottom + 2)
+      ..quadraticBezierTo(spine.dx - bookW * 0.5, pageBottom - 6,
+          spine.dx - bookW - 6, pageBottom + 2)
       ..lineTo(spine.dx - bookW - 6, pageTop + 8)
       ..lineTo(spine.dx + bookW + 6, pageTop + 8)
       ..lineTo(spine.dx + bookW + 6, pageBottom + 2)
-      ..quadraticBezierTo(spine.dx + bookW * 0.5, pageBottom - 6, spine.dx, pageBottom + 4)
+      ..quadraticBezierTo(
+          spine.dx + bookW * 0.5, pageBottom - 6, spine.dx, pageBottom + 4)
       ..close();
     canvas.drawPath(coverPath, cover);
 
@@ -88,9 +98,11 @@ class _BookSunPainter extends CustomPainter {
     for (final dir in [-1.0, 1.0]) {
       final p = Path()
         ..moveTo(spine.dx, pageTop + 10)
-        ..quadraticBezierTo(spine.dx + dir * bookW * 0.5, pageTop - 8, spine.dx + dir * bookW, pageTop)
+        ..quadraticBezierTo(spine.dx + dir * bookW * 0.5, pageTop - 8,
+            spine.dx + dir * bookW, pageTop)
         ..lineTo(spine.dx + dir * bookW, pageBottom - 6)
-        ..quadraticBezierTo(spine.dx + dir * bookW * 0.5, pageBottom - 14, spine.dx, pageBottom)
+        ..quadraticBezierTo(
+            spine.dx + dir * bookW * 0.5, pageBottom - 14, spine.dx, pageBottom)
         ..close();
       canvas.drawPath(p, page);
       canvas.drawPath(p, edge);
