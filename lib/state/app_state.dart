@@ -108,7 +108,9 @@ class AppState extends ChangeNotifier {
   void deleteBook(BookInfo book) {
     books.remove(book);
     for (var i = 0; i < alarms.length; i++) {
-      if (alarms[i].book == book) alarms[i] = alarms[i].copyWith(enabled: false);
+      if (alarms[i].book == book) {
+        alarms[i] = alarms[i].copyWith(enabled: false);
+      }
     }
     notifyListeners();
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../models/reading_alarm.dart';
 import '../services/ads_service.dart';
 import '../state/app_state.dart';
@@ -195,6 +196,7 @@ class _SetAlarmScreenState extends State<SetAlarmScreen> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                     textStyle: const TextStyle(
+                      fontFamily: AppTheme.fontFamily,
                       fontSize: 17,
                       fontWeight: FontWeight.w600,
                     ),
@@ -259,9 +261,8 @@ class _TimeSpinnerState extends State<_TimeSpinner> {
   @override
   Widget build(BuildContext context) {
     final t = widget.time;
-    final hour = (t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod)
-        .toString()
-        .padLeft(2, '0');
+    final hour =
+        (t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod).toString().padLeft(2, '0');
     final minute = t.minute.toString().padLeft(2, '0');
     final period = t.period == DayPeriod.am ? 'AM' : 'PM';
 
@@ -271,7 +272,8 @@ class _TimeSpinnerState extends State<_TimeSpinner> {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
-          BoxShadow(color: AppColors.shadow, blurRadius: 14, offset: Offset(0, 4)),
+          BoxShadow(
+              color: AppColors.shadow, blurRadius: 14, offset: Offset(0, 4)),
         ],
       ),
       child: Row(
@@ -488,8 +490,13 @@ class _RepeatDays extends StatelessWidget {
 
   static const _letters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   static const _names = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday',
-    'Friday', 'Saturday', 'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
   ];
 
   @override

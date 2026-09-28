@@ -34,7 +34,6 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 _PremiumCard(isPremium: state.isPremium),
                 const SizedBox(height: 24),
-
                 const SectionTitle('Voice'),
                 AppCard(
                   child: Column(
@@ -94,7 +93,6 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
-
                 SectionTitle(
                   'Alarm health',
                   trailing: Text(
@@ -142,7 +140,6 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
-
                 const SectionTitle('Account'),
                 AppCard(
                   padding: const EdgeInsets.symmetric(vertical: 4),
@@ -206,7 +203,8 @@ class _PremiumCard extends StatelessWidget {
       onTap: isPremium ? null : () => PaywallScreen.open(context),
       child: Row(
         children: [
-          const Icon(Icons.auto_stories_rounded, color: AppColors.orange, size: 36),
+          const Icon(Icons.auto_stories_rounded,
+              color: AppColors.orange, size: 36),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -225,7 +223,8 @@ class _PremiumCard extends StatelessWidget {
                   isPremium
                       ? 'No ads. Unlimited books and alarms.'
                       : 'Unlimited books, 60-min sessions, every voice.',
-                  style: const TextStyle(color: Color(0xFFC9CFE3), fontSize: 13),
+                  style:
+                      const TextStyle(color: Color(0xFFC9CFE3), fontSize: 13),
                 ),
               ],
             ),
@@ -257,7 +256,8 @@ class _SliderRow extends StatelessWidget {
       children: [
         SizedBox(
           width: 56,
-          child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          child:
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
         ),
         Expanded(
           child: GestureDetector(
@@ -284,7 +284,8 @@ class _SliderRow extends StatelessWidget {
           ),
         ),
         SizedBox(
-          width: 60,
+          // Wide enough for the Premium chip (lock icon + label).
+          width: locked ? 84 : 60,
           child: locked
               ? const PremiumChip()
               : Text('${value.toStringAsFixed(2)}x',

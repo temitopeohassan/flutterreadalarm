@@ -110,13 +110,15 @@ class StatsScreen extends StatelessWidget {
                 const SizedBox(height: 20),
                 const SectionTitle('Sessions'),
                 if (history.isEmpty)
-                  const Text('No sessions yet. Your first alarm will show up here.',
+                  const Text(
+                      'No sessions yet. Your first alarm will show up here.',
                       style: TextStyle(color: AppColors.textSecondary)),
                 for (final s in history)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: AppCard(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                       child: Row(
                         children: [
                           Expanded(
@@ -125,7 +127,8 @@ class StatsScreen extends StatelessWidget {
                               children: [
                                 Text(s.bookTitle,
                                     style: const TextStyle(
-                                        fontSize: 15, fontWeight: FontWeight.w600)),
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600)),
                                 const SizedBox(height: 2),
                                 Text(
                                   '${relativeDay(s.startedAt)}, '
@@ -150,7 +153,8 @@ class StatsScreen extends StatelessWidget {
                     onTap: () => PaywallScreen.open(context),
                     child: Row(
                       children: [
-                        const Icon(Icons.lock_rounded, color: AppColors.orangeDark),
+                        const Icon(Icons.lock_rounded,
+                            color: AppColors.orangeDark),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
@@ -174,7 +178,8 @@ class StatsScreen extends StatelessWidget {
 }
 
 class _StatTile extends StatelessWidget {
-  const _StatTile({required this.value, required this.label, required this.icon});
+  const _StatTile(
+      {required this.value, required this.label, required this.icon});
   final String value;
   final String label;
   final IconData icon;

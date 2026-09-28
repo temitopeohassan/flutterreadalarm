@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import '../../models/reading_alarm.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
@@ -30,7 +31,8 @@ class _FirstBookScreenState extends State<FirstBookScreen> {
     // Production: schedule a one-off exact alarm 60 s from now that starts
     // a 1-minute session, then ask the user to lock the phone.
     setState(() => _testScheduled = true);
-    showSnack(context, 'Test alarm set for 1 minute from now. Lock your phone.');
+    showSnack(
+        context, 'Test alarm set for 1 minute from now. Lock your phone.');
   }
 
   @override
@@ -39,7 +41,8 @@ class _FirstBookScreenState extends State<FirstBookScreen> {
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       children: [
         const SizedBox(height: 12),
-        const Center(child: IconBadge(icon: Icons.library_add_rounded, size: 96)),
+        const Center(
+            child: IconBadge(icon: Icons.library_add_rounded, size: 96)),
         const SizedBox(height: 20),
         const Text(
           'Add your first book',
@@ -54,7 +57,8 @@ class _FirstBookScreenState extends State<FirstBookScreen> {
         const Text(
           'Then run a 1-minute test to check reading starts with your screen locked.',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 15, height: 1.45, color: AppColors.textSecondary),
+          style: TextStyle(
+              fontSize: 15, height: 1.45, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 24),
         if (_book == null)
@@ -78,7 +82,8 @@ class _FirstBookScreenState extends State<FirstBookScreen> {
                               fontSize: 16, fontWeight: FontWeight.w600)),
                       const SizedBox(height: 2),
                       Text('${_book!.format} added',
-                          style: const TextStyle(color: AppColors.textSecondary)),
+                          style:
+                              const TextStyle(color: AppColors.textSecondary)),
                     ],
                   ),
                 ),
@@ -92,9 +97,8 @@ class _FirstBookScreenState extends State<FirstBookScreen> {
             height: 54,
             child: OutlinedButton.icon(
               onPressed: _testScheduled ? null : _testAlarm,
-              icon: Icon(_testScheduled
-                  ? Icons.check_rounded
-                  : Icons.timer_outlined),
+              icon: Icon(
+                  _testScheduled ? Icons.check_rounded : Icons.timer_outlined),
               label: Text(_testScheduled
                   ? 'Test alarm scheduled'
                   : 'Run 1-minute test alarm'),
@@ -103,8 +107,10 @@ class _FirstBookScreenState extends State<FirstBookScreen> {
                 side: const BorderSide(color: AppColors.orange, width: 1.4),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
-                textStyle:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                textStyle: const TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600),
               ),
             ),
           ),

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../models/reading_alarm.dart';
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
@@ -168,12 +169,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('${(_currentProgress * 100).toStringAsFixed(1)}% of book',
-                    style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textMuted)),
                 Text(
                   remaining == null
                       ? formatClock(_elapsed)
                       : '${formatClock(remaining)} left',
-                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                  style:
+                      const TextStyle(fontSize: 12, color: AppColors.textMuted),
                 ),
               ],
             ),
@@ -210,8 +213,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                   tooltip: 'Next sentence',
                   iconSize: 34,
                   color: AppColors.navy,
-                  onPressed: () => setState(() =>
-                      _sentence = (_sentence + 1) % _sentences.length),
+                  onPressed: () => setState(
+                      () => _sentence = (_sentence + 1) % _sentences.length),
                   icon: const Icon(Icons.forward_rounded),
                 ),
               ],
@@ -232,10 +235,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     selectedColor: AppColors.orange,
                     backgroundColor: AppColors.surface,
                     side: BorderSide(
-                      color: state.speed == s ? AppColors.orange : AppColors.border,
+                      color: state.speed == s
+                          ? AppColors.orange
+                          : AppColors.border,
                     ),
                     labelStyle: TextStyle(
-                      color: state.speed == s ? Colors.white : AppColors.textSecondary,
+                      color: state.speed == s
+                          ? Colors.white
+                          : AppColors.textSecondary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -264,7 +271,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
                   textStyle: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w600),
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600),
                 ),
                 child: const Text('Stop and save'),
               ),

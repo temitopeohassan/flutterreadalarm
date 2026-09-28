@@ -13,7 +13,8 @@ class PaywallScreen extends StatefulWidget {
 
   static Future<void> open(BuildContext context) {
     return Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute(fullscreenDialog: true, builder: (_) => const PaywallScreen()),
+      MaterialPageRoute(
+          fullscreenDialog: true, builder: (_) => const PaywallScreen()),
     );
   }
 
@@ -81,7 +82,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       child: IconButton(
                         tooltip: 'Close',
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                        icon: const Icon(Icons.close_rounded,
+                            color: Colors.white),
                       ),
                     ),
                     const Icon(Icons.auto_stories_rounded,
@@ -186,7 +188,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
 }
 
 class _PlanTile extends StatelessWidget {
-  const _PlanTile({required this.plan, required this.selected, required this.onTap});
+  const _PlanTile(
+      {required this.plan, required this.selected, required this.onTap});
   final _Plan plan;
   final bool selected;
   final VoidCallback onTap;
