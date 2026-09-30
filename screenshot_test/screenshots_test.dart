@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/main.dart';
 import 'package:readalarm/state/app_state.dart';
 
+import '../test/support/fakes.dart';
 import '../test/support/finders.dart';
 
 const _outDir = 'screenshots';
@@ -42,8 +43,10 @@ Future<void> _launch(WidgetTester tester, AppState state) async {
 
 /// Disposes the app (cancelling its timers) and restores debug flags, which
 /// the test framework requires before the test body returns.
-Future<void> _finish(WidgetTester tester) async {
+Future<void> _finish(WidgetTester tester, AppState state) async {
+  await state.reader.finish('stop');
   await tester.pumpWidget(const SizedBox());
+  state.dispose();
   debugDisableShadows = true;
 }
 
@@ -68,7 +71,10 @@ void main() {
   });
 
   testWidgets('onboarding', (tester) async {
-    await _launch(tester, AppState());
+    final (state, fakes) =
+        await demoState(onboardingDone: false, emptyLibrary: true);
+    fakes.importer.slow = true;
+    await _launch(tester, state);
 
     await _shot(tester, '01_onboarding_welcome');
     await tapText(tester, 'Get started');
@@ -84,32 +90,36 @@ void main() {
 
     await tapText(tester, 'Choose a PDF or EPUB');
     await _shot(tester, '07_import_sheet');
-    await tapText(tester, 'Choose EPUB');
-    await tester.pump(const Duration(milliseconds: 1200));
+    await tester.tap(find.text('Choose EPUB'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
     await _shot(tester, '08_import_sheet_extracting');
-    await tester.pump(const Duration(seconds: 3));
+    await tester.pump(const Duration(seconds: 2));
     await _shot(tester, '09_import_sheet_ready');
-    await tapText(tester, 'Add to library');
+    await tapText(tester, 'Done');
+    await tapText(tester, 'Run 1-minute test alarm');
+    await tester.pump(const Duration(seconds: 5)); // Let the snackbar go.
     await _shot(tester, '10_onboarding_first_book_added');
 
     await tapText(tester, 'Finish setup');
     await _shot(tester, '11_paywall');
     await tapText(tester, 'Continue with ads');
-    await _shot(tester, '12_home');
+    await _shot(tester, '12_home_first_run');
 
-    await _finish(tester);
+    await _finish(tester, state);
   });
 
   testWidgets('main app', (tester) async {
-    final state = AppState()..onboardingDone = true;
+    final (state, _) = await demoState();
     await _launch(tester, state);
+    await _shot(tester, '13_home');
 
     await tapText(tester, 'Library');
-    await _shot(tester, '13_library');
+    await _shot(tester, '14_library');
     await tapText(tester, 'Stats');
-    await _shot(tester, '14_stats');
+    await _shot(tester, '15_stats');
     await tapText(tester, 'Settings');
-    await _shot(tester, '15_settings');
+    await _shot(tester, '16_settings');
     await tapText(tester, 'Home');
 
     // Free tier already has the maximum number of alarms, so this opens the
@@ -118,19 +128,28 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text(state.alarms.first.book.title).first);
-    await _shot(tester, '16_set_alarm');
+    await tester.tap(find.text('7:00 AM').first);
+    await _shot(tester, '17_set_alarm');
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('Preview alarm screen'));
-    await _shot(tester, '17_reading_reminder');
+    await _shot(tester, '18_reading_reminder');
     await tapText(tester, 'Start reading');
-    await tester.pump(const Duration(seconds: 9));
-    await _shot(tester, '18_now_playing');
+    await tester.pump(const Duration(seconds: 3));
+    await _shot(tester, '19_now_playing');
+    await tester.tap(find.byTooltip('Minimise'));
+    await _shot(tester, '20_mini_player');
+    await tapText(tester, 'The Midnight Library');
     await tapText(tester, 'Stop and save');
-    await _shot(tester, '19_session_complete');
+    await _shot(tester, '21_session_complete');
+    await tapText(tester, 'Done');
 
-    await _finish(tester);
+    await tapText(tester, 'Library');
+    await tester.tap(find.byTooltip('Add book'));
+    await tester.pumpAndSettle();
+    await _shot(tester, '22_free_book_limit');
+
+    await _finish(tester, state);
   });
 }

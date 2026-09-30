@@ -1,71 +1,229 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/models/reading_alarm.dart';
+import 'package:readalarm/services/alarm_scheduler.dart';
+import 'package:readalarm/services/book_importer.dart';
 import 'package:readalarm/state/app_state.dart';
+
+import 'support/fakes.dart';
+import 'support/sample_files.dart';
 
 void main() {
   group('AppState', () {
-    test('free tier limits books and alarms, premium lifts them', () {
-      final state = AppState();
-      while (state.books.length < AppState.freeBookLimit) {
-        state.addBook(state.books.first.copyWith(title: 'extra'));
-      }
+    test('free tier limits books and alarms, premium lifts them', () async {
+      final (state, _) = await demoState();
+      expect(state.books.length, AppState.freeBookLimit);
       expect(state.canAddBook, isFalse);
+      expect(state.canAddAlarm, isFalse);
 
       state.setPremium(true);
       expect(state.canAddBook, isTrue);
       expect(state.canAddAlarm, isTrue);
       expect(state.has60MinAccess, isTrue);
+      state.dispose();
     });
 
-    test('rewarded unlock grants 60-minute access', () {
-      final state = AppState();
+    test('rewarded unlock grants 60-minute access', () async {
+      final (state, _) = await demoState();
       expect(state.has60MinAccess, isFalse);
       state.unlockRewarded();
       expect(state.has60MinAccess, isTrue);
+      state.dispose();
     });
 
-    test('deleting a book disables alarms that use it', () {
-      final state = AppState();
-      final alarm = state.alarms.firstWhere((a) => a.enabled);
-      state.deleteBook(alarm.book);
-      expect(state.books, isNot(contains(alarm.book)));
-      expect(
-        state.alarms
-            .where((a) => a.book == alarm.book)
-            .every((a) => !a.enabled),
-        isTrue,
+    test('everything survives a restart', () async {
+      final (state, fakes) = await demoState();
+      state
+        ..setPremium(true)
+        ..setSpeed(1.5)
+        ..setVoice(FakeSpeech.voiceList[1])
+        ..renameBook(state.books.first, 'Renamed')
+        ..updatePosition(state.books.first.id, 555);
+      await state.toggleAlarm(state.alarms.last, true);
+      await pumpEventQueue();
+      state.dispose();
+
+      final restored = await AppState.load(fakes.services);
+      expect(restored.isPremium, isTrue);
+      expect(restored.speed, 1.5);
+      expect(restored.voice, FakeSpeech.voiceList[1]);
+      expect(restored.books.first.title, 'Renamed');
+      expect(restored.books.first.position, 555);
+      expect(restored.books.first.chapter, 'Chapter 6');
+      expect(restored.alarms.first.book.title, 'Renamed');
+      expect(restored.alarms.every((a) => a.enabled), isTrue);
+      expect(restored.sessions.length, state.sessions.length);
+      restored.dispose();
+    });
+
+    test('alarms are scheduled with the OS and cancelled on delete', () async {
+      final (state, fakes) = await demoState(premium: true);
+      final enabled = state.alarms.where((a) => a.enabled).map((a) => a.id);
+      expect(fakes.alarms.scheduled.keys, unorderedEquals(enabled));
+
+      final alarm = ReadingAlarm(
+        id: 'new',
+        time: const TimeOfDay(hour: 6, minute: 30),
+        book: state.books[2],
+        durationMin: 15,
+        repeatDays: const {},
       );
+      await state.upsertAlarm(alarm);
+      expect(fakes.alarms.scheduled['new'], same(alarm));
+
+      await state.toggleAlarm(alarm, false);
+      expect(fakes.alarms.scheduled.containsKey('new'), isFalse);
+
+      await state.deleteAlarm(state.alarms.first);
+      expect(fakes.alarms.scheduled.containsKey('a1'), isFalse);
+      state.dispose();
     });
 
-    test('upsertAlarm replaces by id and toggleAlarm flips enabled', () {
-      final state = AppState();
-      final alarm = state.alarms.first;
-      final count = state.alarms.length;
+    test('one-off alarms that already rang are switched off at startup',
+        () async {
+      final (state, fakes) = await demoState(premium: true);
+      await state.upsertAlarm(ReadingAlarm(
+        id: 'once',
+        time: const TimeOfDay(hour: 6, minute: 0),
+        book: state.books.first,
+        durationMin: 15,
+        repeatDays: const {},
+      ));
+      await pumpEventQueue();
+      state.dispose();
+      fakes.alarms.scheduled.remove('once'); // It rang.
 
-      state.toggleAlarm(alarm, !alarm.enabled);
-      expect(state.alarms.length, count);
-      expect(state.alarms.first.enabled, !alarm.enabled);
-
-      state.deleteAlarm(alarm);
-      expect(state.alarms.length, count - 1);
+      final restored = await AppState.load(fakes.services);
+      expect(
+          restored.alarms.firstWhere((a) => a.id == 'once').enabled, isFalse);
+      restored.dispose();
     });
 
-    test('nextAlarm is the earliest enabled alarm', () {
-      final state = AppState();
-      final next = state.nextAlarm;
-      expect(next, isNotNull);
-      int minutes(ReadingAlarm a) => a.time.hour * 60 + a.time.minute;
+    test('deleting a book removes its alarms and text', () async {
+      final (state, fakes) = await demoState();
+      final book = state.alarms.first.book;
+      await state.deleteBook(book);
+      expect(state.books, isNot(contains(book)));
+      expect(state.alarms.where((a) => a.book == book), isEmpty);
+      expect(fakes.storage.texts.containsKey(book.id), isFalse);
+      expect(fakes.alarms.scheduled.containsKey('a1'), isFalse);
+      state.dispose();
+    });
+
+    test('nextAlarm is the enabled alarm that rings soonest', () async {
+      final (state, _) = await demoState();
+      final next = state.nextAlarm!;
+      final now = DateTime.now();
       for (final a in state.alarms.where((a) => a.enabled)) {
-        expect(minutes(next!), lessThanOrEqualTo(minutes(a)));
+        expect(
+            next.nextOccurrence(now).isAfter(a.nextOccurrence(now)), isFalse);
       }
+      state.dispose();
     });
 
-    test('grantPermission marks a permission granted', () {
-      final state = AppState();
+    test('permissions come from the device; auto-start from the user',
+        () async {
+      final (state, fakes) = await demoState();
+      expect(state.allPermissionsGranted, isFalse);
       for (final key in state.permissions.keys.toList()) {
-        state.grantPermission(key);
+        await state.requestPermission(key);
       }
+      expect(fakes.permissions.requested,
+          ['notifications', 'exactAlarm', 'battery']);
+      expect(state.autoStartConfirmed, isTrue);
       expect(state.allPermissionsGranted, isTrue);
+      state.dispose();
+    });
+
+    test('imported books keep their text, title and author', () async {
+      final (state, fakes) = await demoState(emptyLibrary: true);
+      final (format, extracted) = await fakes.importer
+          .extract(PickedBook(name: 'x.epub', read: () async => buildEpub()));
+      final book = await state.addExtractedBook(
+          fileName: 'x.epub', format: format, extracted: extracted);
+
+      expect(book.title, 'The Quiet Morning');
+      expect(book.author, 'Ada Writer');
+      expect(book.format, 'EPUB');
+      expect(book.sentenceCount, 7);
+      expect(book.chapter, 'One: The Kettle');
+      expect((await fakes.storage.loadBookText(book.id))!.sentences.length, 7);
+      state.dispose();
+    });
+
+    test('a book without a title is named after its file', () async {
+      final (state, fakes) = await demoState(emptyLibrary: true);
+      final (format, extracted) = await fakes.importer.extract(PickedBook(
+          name: 'Field Notes.pdf', read: () async => buildPdf(title: '')));
+      final book = await state.addExtractedBook(
+          fileName: 'Field Notes.pdf', format: format, extracted: extracted);
+      expect(book.title, 'Field Notes');
+      expect(book.format, 'PDF');
+      state.dispose();
+    });
+
+    test('the test alarm rings in a minute with the last-read book', () async {
+      final (state, fakes) = await demoState();
+      expect(await state.scheduleTestAlarm(), isTrue);
+      final (payload, at) = fakes.alarms.once.single;
+      expect(payload.bookId, state.lastReadBook!.id);
+      expect(payload.durationMin, 1);
+      expect(at.difference(DateTime.now()).inSeconds, closeTo(60, 2));
+      state.dispose();
+
+      final (empty, _) = await demoState(emptyLibrary: true);
+      expect(await empty.scheduleTestAlarm(), isFalse);
+      empty.dispose();
+    });
+
+    test('opening a ringing alarm switches off a one-off alarm', () async {
+      final (state, fakes) = await demoState(premium: true);
+      final once = ReadingAlarm(
+        id: 'once',
+        time: const TimeOfDay(hour: 6, minute: 0),
+        book: state.books.first,
+        durationMin: 15,
+        repeatDays: const {},
+      );
+      await state.upsertAlarm(once);
+      fakes.alarms.onLaunch!(
+          AlarmLaunch(AlarmPayload.forAlarm(once), AlarmAction.open));
+
+      final (alarm, action) = state.pendingAlarm.value!;
+      expect(alarm.id, 'once');
+      expect(action, AlarmAction.open);
+      expect(state.alarms.firstWhere((a) => a.id == 'once').enabled, isFalse);
+
+      await state.snoozeAlarm(alarm);
+      expect(fakes.alarms.dismissed, ['once']);
+      expect(fakes.alarms.once.single.$1.alarmId, 'once');
+      state.dispose();
+    });
+  });
+
+  group('ReadingAlarm', () {
+    test('nextOccurrence honours the time and repeat days', () {
+      final alarm = ReadingAlarm(
+        id: 'x',
+        time: const TimeOfDay(hour: 7, minute: 0),
+        book: SampleData.books.first,
+        durationMin: 15,
+        repeatDays: const {0, 2}, // Mon, Wed
+      );
+      // Monday 2026-09-28 06:00 → same day 07:00.
+      expect(alarm.nextOccurrence(DateTime(2026, 9, 28, 6)),
+          DateTime(2026, 9, 28, 7));
+      // Monday 08:00 → Wednesday 07:00.
+      expect(alarm.nextOccurrence(DateTime(2026, 9, 28, 8)),
+          DateTime(2026, 9, 30, 7));
+      // Wednesday 07:00 exactly → next Monday.
+      expect(alarm.nextOccurrence(DateTime(2026, 9, 30, 7)),
+          DateTime(2026, 10, 5, 7));
+      // One-off: tomorrow if today's time has passed.
+      expect(
+          alarm.copyWith(
+              repeatDays: const {}).nextOccurrence(DateTime(2026, 9, 28, 8)),
+          DateTime(2026, 9, 29, 7));
     });
   });
 }

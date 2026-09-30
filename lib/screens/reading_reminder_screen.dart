@@ -7,11 +7,9 @@ import 'now_playing_screen.dart';
 import '../theme/app_colors.dart';
 import '../widgets/reminder_illustration.dart';
 
-/// Screen — Reading reminder, shown when an alarm fires (full-screen intent
-/// over the lock screen, or from the alarm notification). Never shows ads.
-///
-/// Production: Start reading attaches to the already-running foreground
-/// session; Snooze reschedules +10 min with the remaining duration (SVC-3).
+/// Screen — Reading reminder, shown when an alarm rings (full-screen over the
+/// lock screen, or from the alarm notification). Never shows ads.
+/// Start reading begins an alarm session; Snooze rings again in 10 min.
 class ReadingReminderScreen extends StatelessWidget {
   const ReadingReminderScreen({super.key, required this.alarm});
 
@@ -24,7 +22,10 @@ class ReadingReminderScreen extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            _NotificationBar(onClose: () => Navigator.of(context).maybePop()),
+            _NotificationBar(onClose: () {
+              AppScope.of(context).silenceAlarm(alarm);
+              Navigator.of(context).maybePop();
+            }),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
@@ -54,18 +55,25 @@ class ReadingReminderScreen extends StatelessWidget {
                     const SizedBox(height: 24),
                     _AlarmCard(
                       alarm: alarm,
-                      onStart: () => Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(
-                          builder: (_) => NowPlayingScreen(
-                            bookId: alarm.book.id,
-                            durationMin: alarm.durationMin,
-                          ),
-                        ),
-                      ),
-                      onSnooze: () {
+                      onStart: () async {
+                        final state = AppScope.of(context);
+                        await state.silenceAlarm(alarm);
+                        if (!context.mounted) return;
+                        await NowPlayingScreen.open(
+                          context,
+                          state.findBook(alarm.book.id) ?? alarm.book,
+                          durationMin: alarm.durationMin,
+                          replace: true,
+                        );
+                      },
+                      onSnooze: () async {
+                        final state = AppScope.of(context);
+                        final navigator = Navigator.of(context);
+                        await state.snoozeAlarm(alarm);
+                        if (!context.mounted) return;
                         showSnack(
                             context, 'Snoozed. Reading starts in 10 minutes.');
-                        Navigator.of(context).maybePop();
+                        navigator.maybePop();
                       },
                     ),
                     const SizedBox(height: 14),

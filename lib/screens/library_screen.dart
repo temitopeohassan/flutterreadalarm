@@ -20,8 +20,7 @@ class LibraryScreen extends StatelessWidget {
       await PaywallScreen.open(context);
       return;
     }
-    final book = await ImportSheet.show(context);
-    if (book != null) state.addBook(book);
+    await ImportSheet.show(context);
   }
 
   Future<void> _rename(BuildContext context, BookInfo book) async {
@@ -52,7 +51,7 @@ class LibraryScreen extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete book?'),
         content: Text(
-            '"${book.title}" and your progress will be removed. Alarms using it will be turned off.'),
+            '"${book.title}", your progress and any alarms for it will be removed.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -128,11 +127,7 @@ class LibraryScreen extends StatelessWidget {
                       final book = books[i];
                       return _BookRow(
                         book: book,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => NowPlayingScreen(bookId: book.id),
-                          ),
-                        ),
+                        onTap: () => NowPlayingScreen.open(context, book),
                         onRename: () => _rename(context, book),
                         onDelete: () => _delete(context, book),
                       );

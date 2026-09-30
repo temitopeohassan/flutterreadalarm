@@ -23,13 +23,13 @@ class _FirstBookScreenState extends State<FirstBookScreen> {
   Future<void> _import() async {
     final book = await ImportSheet.show(context);
     if (book == null || !mounted) return;
-    AppScope.of(context).addBook(book);
     setState(() => _book = book);
   }
 
-  void _testAlarm() {
-    // Production: schedule a one-off exact alarm 60 s from now that starts
-    // a 1-minute session, then ask the user to lock the phone.
+  /// Rings in 60 s and reads the new book for a minute (ONB-4).
+  Future<void> _testAlarm() async {
+    final scheduled = await AppScope.of(context).scheduleTestAlarm();
+    if (!mounted || !scheduled) return;
     setState(() => _testScheduled = true);
     showSnack(
         context, 'Test alarm set for 1 minute from now. Lock your phone.');
@@ -81,7 +81,7 @@ class _FirstBookScreenState extends State<FirstBookScreen> {
                           style: const TextStyle(
                               fontSize: 16, fontWeight: FontWeight.w600)),
                       const SizedBox(height: 2),
-                      Text('${_book!.format} added',
+                      Text('${_book!.format} · ${_book!.author}',
                           style:
                               const TextStyle(color: AppColors.textSecondary)),
                     ],

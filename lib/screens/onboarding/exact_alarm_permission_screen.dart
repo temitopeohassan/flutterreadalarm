@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import '../../state/app_state.dart';
 import 'onboarding_page.dart';
 
-/// Onboarding 3 — SCHEDULE_EXACT_ALARM (Android 12+).
-///
-/// Production: check AlarmManager.canScheduleExactAlarms(); if false, open
-/// ACTION_REQUEST_SCHEDULE_EXACT_ALARM settings and re-check on resume.
+/// Onboarding 3 — SCHEDULE_EXACT_ALARM (Android 12+) and, on Android 14+,
+/// full-screen alarms over the lock screen. Both open system settings; the
+/// status is re-checked when the app resumes.
 class ExactAlarmPermissionScreen extends StatelessWidget {
   const ExactAlarmPermissionScreen({super.key, required this.onNext});
   final VoidCallback onNext;
@@ -21,8 +20,8 @@ class ExactAlarmPermissionScreen extends StatelessWidget {
       body: 'Allow alarms and reminders so your book starts at the exact '
           'minute you set, not whenever Android decides.',
       primaryLabel: granted ? 'Continue' : 'Open alarm settings',
-      onPrimary: () {
-        if (!granted) state.grantPermission('exactAlarm');
+      onPrimary: () async {
+        if (!granted) await state.requestPermission('exactAlarm');
         onNext();
       },
       secondaryLabel: granted ? null : 'Skip for now',

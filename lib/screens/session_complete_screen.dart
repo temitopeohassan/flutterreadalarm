@@ -9,16 +9,9 @@ import '../widgets/common.dart';
 /// Screen — Session complete (SVC-4, PRG-3).
 /// Free users may see an interstitial when leaving this screen (ADS-3).
 class SessionCompleteScreen extends StatelessWidget {
-  const SessionCompleteScreen({
-    super.key,
-    required this.bookId,
-    required this.minutes,
-    required this.progressBefore,
-  });
+  const SessionCompleteScreen({super.key, required this.session});
 
-  final String bookId;
-  final int minutes;
-  final double progressBefore;
+  final CompletedSession session;
 
   void _done(BuildContext context) {
     final state = AppScope.of(context);
@@ -29,8 +22,10 @@ class SessionCompleteScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final book = state.bookById(bookId);
-    final gained = ((book.progress - progressBefore) * 100).clamp(0, 100);
+    final book = state.findBook(session.bookId);
+    if (book == null) return const Scaffold();
+    final gained =
+        ((book.progress - session.progressBefore) * 100).clamp(0, 100);
     final next = state.nextAlarm;
 
     return Scaffold(
@@ -42,9 +37,11 @@ class SessionCompleteScreen extends StatelessWidget {
               const Spacer(),
               const IconBadge(icon: Icons.check_rounded, size: 120),
               const SizedBox(height: 24),
-              const Text(
-                'Session complete',
-                style: TextStyle(
+              Text(
+                session.reason == 'finished'
+                    ? 'Book finished!'
+                    : 'Session complete',
+                style: const TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w700,
                   color: AppColors.navy,
@@ -52,7 +49,7 @@ class SessionCompleteScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'You listened for $minutes min',
+                'You listened for ${session.minutes} min',
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,

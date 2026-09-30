@@ -3,21 +3,33 @@ import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
 
-/// Onboarding 5 — brand-specific auto-start guide (ONB-3).
-///
-/// Production: preselect the brand from device_info_plus
-/// (AndroidDeviceInfo.manufacturer) and deep-link to the OEM settings page
-/// where possible.
+/// Onboarding 5 — brand-specific auto-start guide (ONB-3). The phone's brand
+/// is preselected; Android has no API to check this setting, so the user
+/// confirms it themselves.
 class OemAutostartScreen extends StatefulWidget {
   const OemAutostartScreen({super.key, required this.onNext});
   final VoidCallback onNext;
+
+  /// The guide matching a manufacturer name from device info.
+  static String brandFor(String manufacturer) {
+    final m = manufacturer.toLowerCase();
+    if (['tecno', 'infinix', 'itel', 'transsion'].any(m.contains)) {
+      return 'Tecno / Infinix / itel';
+    }
+    if (['xiaomi', 'redmi', 'poco'].any(m.contains)) {
+      return 'Xiaomi / Redmi / Poco';
+    }
+    if (m.contains('samsung')) return 'Samsung';
+    if (['oppo', 'realme', 'oneplus'].any(m.contains)) return 'Oppo / Realme';
+    return 'Other';
+  }
 
   @override
   State<OemAutostartScreen> createState() => _OemAutostartScreenState();
 }
 
 class _OemAutostartScreenState extends State<OemAutostartScreen> {
-  String _brand = 'Tecno / Infinix / itel';
+  String? _brand;
 
   static const _guides = <String, List<String>>{
     'Tecno / Infinix / itel': [
@@ -50,7 +62,8 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final steps = _guides[_brand]!;
+    final steps = _guides[_brand ??=
+        OemAutostartScreen.brandFor(state.services.deviceBrand)]!;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
@@ -136,11 +149,20 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 24),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: state.services.permissions.openAppSettings,
+            icon: const Icon(Icons.open_in_new_rounded, size: 18),
+            label: const Text('Open app settings'),
+            style: TextButton.styleFrom(foregroundColor: AppColors.orange),
+          ),
+        ),
+        const SizedBox(height: 12),
         PrimaryButton(
           label: 'I\'ve done this',
-          onPressed: () {
-            state.grantPermission('autoStart');
+          onPressed: () async {
+            await state.requestPermission('autoStart');
             widget.onNext();
           },
         ),
