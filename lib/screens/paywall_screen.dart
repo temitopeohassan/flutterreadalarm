@@ -111,6 +111,17 @@ class _PaywallScreenState extends State<PaywallScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
               children: [
+                // Plans first so every option is visible without scrolling.
+                for (final p in _plans)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _PlanTile(
+                      plan: p,
+                      selected: p.id == _selected,
+                      onTap: () => setState(() => _selected = p.id),
+                    ),
+                  ),
+                const SizedBox(height: 14),
                 for (final b in _benefits)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
@@ -132,16 +143,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
                                   fontSize: 15, fontWeight: FontWeight.w500)),
                         ),
                       ],
-                    ),
-                  ),
-                const SizedBox(height: 8),
-                for (final p in _plans)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _PlanTile(
-                      plan: p,
-                      selected: p.id == _selected,
-                      onTap: () => setState(() => _selected = p.id),
                     ),
                   ),
               ],

@@ -98,4 +98,26 @@ void main() {
 
     expect(state.alarms.length, count + 1);
   });
+
+  testWidgets('paywall shows the monthly plan without scrolling',
+      (tester) async {
+    final state = AppState()..onboardingDone = true;
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Go ad-free').first);
+    await tester.pumpAndSettle();
+
+    for (final plan in ['Yearly', 'Monthly', 'Lifetime']) {
+      final rect = tester.getRect(find.text(plan));
+      expect(rect.bottom, lessThan(tester.view.physicalSize.height / 3),
+          reason: '$plan should be on screen');
+    }
+    expect(find.text('₦1,500 / month'), findsOneWidget);
+
+    await tester.tap(find.text('Monthly'));
+    await tester.pumpAndSettle();
+    expect(find.text('Continue'), findsOneWidget);
+    expect(find.text('Start 7-day free trial'), findsNothing);
+  });
 }
