@@ -81,14 +81,23 @@ class DeviceBookImporter implements BookImporter {
     // progress back.
     final progress = ReceivePort();
     progress.listen((p) => onProgress?.call(p as double));
-    final send = progress.sendPort;
     try {
-      final book = await Isolate.run(
-        () => extractBook(bytes, format, onProgress: send.send),
-      );
+      final book = await _extractInBackground(bytes, format, progress.sendPort);
       return (format, book);
     } finally {
       progress.close();
     }
   }
 }
+
+/// Runs [extractBook] in a new isolate.
+///
+/// Kept top-level on purpose: a closure created inside [extract] would share
+/// that method's variable context, so the isolate message would also carry
+/// `onProgress` — which references UI state that can't cross isolates.
+Future<ExtractedBook> _extractInBackground(
+  Uint8List bytes,
+  String format,
+  SendPort progress,
+) =>
+    Isolate.run(() => extractBook(bytes, format, onProgress: progress.send));

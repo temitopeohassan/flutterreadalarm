@@ -69,8 +69,9 @@ class _ImportSheetState extends State<ImportSheet> {
       });
     } on BookImportException catch (e) {
       _fail(e.message);
-    } catch (e) {
-      _fail('Something went wrong reading this file.');
+    } catch (e, stack) {
+      debugPrint('Import failed: $e\n$stack');
+      _fail('Something went wrong reading this file. (${e.runtimeType})');
     }
   }
 
