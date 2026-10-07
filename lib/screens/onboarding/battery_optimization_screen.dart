@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import '../../state/app_state.dart';
 import 'onboarding_page.dart';
 
-/// Onboarding 4 — battery optimization whitelist (Doze).
-///
-/// Production: FlutterForegroundTask.requestIgnoreBatteryOptimization(),
-/// or open the battery optimization settings list if Play policy requires.
+/// Onboarding 4 — battery optimization exemption (Doze), so a session keeps
+/// reading with the screen off.
 class BatteryOptimizationScreen extends StatelessWidget {
   const BatteryOptimizationScreen({super.key, required this.onNext});
   final VoidCallback onNext;
@@ -22,8 +20,8 @@ class BatteryOptimizationScreen extends StatelessWidget {
           'doesn\'t stop your book halfway through. It only runs during a '
           'session.',
       primaryLabel: granted ? 'Continue' : 'Allow background reading',
-      onPrimary: () {
-        if (!granted) state.grantPermission('battery');
+      onPrimary: () async {
+        if (!granted) await state.requestPermission('battery');
         onNext();
       },
       secondaryLabel: granted ? null : 'Skip for now',

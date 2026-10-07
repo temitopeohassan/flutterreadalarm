@@ -18,8 +18,8 @@ class NotificationsPermissionScreen extends StatelessWidget {
       body: 'Notifications let you pause, stop or snooze a session without '
           'unlocking your phone.',
       primaryLabel: granted ? 'Continue' : 'Allow notifications',
-      onPrimary: () {
-        if (!granted) state.grantPermission('notifications');
+      onPrimary: () async {
+        if (!granted) await state.requestPermission('notifications');
         onNext();
       },
       secondaryLabel: granted ? null : 'Skip for now',

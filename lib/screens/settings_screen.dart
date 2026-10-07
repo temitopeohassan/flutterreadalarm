@@ -1,11 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../models/reading_alarm.dart';
 import '../services/ads_service.dart';
+import '../services/speech.dart';
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common.dart';
 import '../widgets/navy_header.dart';
+import 'onboarding/oem_autostart_screen.dart';
 import 'paywall_screen.dart';
 
 /// Screen — Settings: Premium, voice, permission health, privacy, purchases
@@ -19,6 +20,22 @@ class SettingsScreen extends StatelessWidget {
     'battery': ('Background reading', 'Not stopped by battery saver'),
     'autoStart': ('Auto-start', 'Phone brand settings'),
   };
+
+  /// Fixes a missing permission. Auto-start has no system prompt, so it
+  /// opens the phone-brand guide instead.
+  Future<void> _fix(BuildContext context, String key) async {
+    final state = AppScope.of(context);
+    if (key != 'autoStart') return state.requestPermission(key);
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (context) => Scaffold(
+        appBar: AppBar(
+          backgroundColor: AppColors.cream,
+          surfaceTintColor: Colors.transparent,
+        ),
+        body: OemAutostartScreen(onNext: () => Navigator.pop(context)),
+      ),
+    ));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,18 +66,26 @@ class SettingsScreen extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 6),
-                      DropdownButton<String>(
-                        value: state.voice,
+                      DropdownButton<VoiceOption?>(
+                        value: state.voices.contains(state.voice)
+                            ? state.voice
+                            : null,
                         isExpanded: true,
                         underline: const SizedBox.shrink(),
                         items: [
-                          for (final v in SampleData.voices)
-                            DropdownMenuItem(value: v, child: Text(v)),
+                          const DropdownMenuItem(
+                              value: null, child: Text('Default voice')),
+                          for (final v in state.voices)
+                            DropdownMenuItem(
+                              value: v,
+                              child: Text(v.label,
+                                  overflow: TextOverflow.ellipsis),
+                            ),
                         ],
                         onChanged: (v) {
                           if (!state.isPremium) {
                             PaywallScreen.open(context);
-                          } else if (v != null) {
+                          } else {
                             state.setVoice(v);
                           }
                         },
@@ -80,9 +105,8 @@ class SettingsScreen extends StatelessWidget {
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton.icon(
-                          // TODO: flutter_tts.speak(sample) with current settings
-                          onPressed: () =>
-                              showSnack(context, 'Playing voice preview…'),
+                          onPressed:
+                              state.reader.active ? null : state.previewVoice,
                           icon: const Icon(Icons.play_circle_outline_rounded),
                           label: const Text('Preview voice'),
                           style: TextButton.styleFrom(
@@ -125,7 +149,7 @@ class SettingsScreen extends StatelessWidget {
                           trailing: state.permissions[e.key]!
                               ? null
                               : TextButton(
-                                  onPressed: () => state.grantPermission(e.key),
+                                  onPressed: () => _fix(context, e.key),
                                   child: const Text('Fix'),
                                 ),
                         ),
@@ -133,8 +157,16 @@ class SettingsScreen extends StatelessWidget {
                         leading: const Icon(Icons.timer_outlined,
                             color: AppColors.navy),
                         title: const Text('Run 1-minute test alarm'),
-                        onTap: () => showSnack(context,
-                            'Test alarm set for 1 minute from now. Lock your phone.'),
+                        onTap: () async {
+                          final scheduled = await state.scheduleTestAlarm();
+                          if (!context.mounted) return;
+                          showSnack(
+                              context,
+                              scheduled
+                                  ? 'Test alarm set for 1 minute from now. '
+                                      'Lock your phone.'
+                                  : 'Add a book in Library first.');
+                        },
                       ),
                     ],
                   ),

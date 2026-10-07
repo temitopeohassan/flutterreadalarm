@@ -7,8 +7,9 @@ class BookInfo {
     required this.coverColors,
     this.author = 'Unknown author',
     this.format = 'EPUB',
-    this.chapter = 'Chapter 1',
-    this.progress = 0,
+    this.chapter = '',
+    this.position = 0,
+    this.sentenceCount = 0,
     this.lastReadAt,
   });
 
@@ -18,19 +19,30 @@ class BookInfo {
 
   /// 'PDF' or 'EPUB'.
   final String format;
+
+  /// Title of the chapter at [position], or '' if the book has none.
   final String chapter;
 
-  /// 0.0 – 1.0
-  final double progress;
+  /// Index of the next sentence to read.
+  final int position;
+
+  /// Number of sentences extracted from the book.
+  final int sentenceCount;
   final DateTime? lastReadAt;
 
-  /// Placeholder cover gradient until real cover extraction is wired up.
+  /// Cover gradient, picked when the book is imported.
   final List<Color> coverColors;
+
+  /// 0.0 – 1.0
+  double get progress =>
+      sentenceCount == 0 ? 0 : (position / sentenceCount).clamp(0.0, 1.0);
+
+  bool get isFinished => sentenceCount > 0 && position >= sentenceCount;
 
   BookInfo copyWith({
     String? title,
     String? chapter,
-    double? progress,
+    int? position,
     DateTime? lastReadAt,
   }) {
     return BookInfo(
@@ -39,11 +51,39 @@ class BookInfo {
       author: author,
       format: format,
       chapter: chapter ?? this.chapter,
-      progress: progress ?? this.progress,
+      position: position ?? this.position,
+      sentenceCount: sentenceCount,
       lastReadAt: lastReadAt ?? this.lastReadAt,
       coverColors: coverColors,
     );
   }
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'title': title,
+        'author': author,
+        'format': format,
+        'chapter': chapter,
+        'position': position,
+        'sentenceCount': sentenceCount,
+        'lastReadAt': lastReadAt?.toIso8601String(),
+        'coverColors': [for (final c in coverColors) c.toARGB32()],
+      };
+
+  factory BookInfo.fromJson(Map<String, Object?> json) => BookInfo(
+        id: json['id'] as String,
+        title: json['title'] as String,
+        author: json['author'] as String? ?? 'Unknown author',
+        format: json['format'] as String? ?? 'EPUB',
+        chapter: json['chapter'] as String? ?? '',
+        position: json['position'] as int? ?? 0,
+        sentenceCount: json['sentenceCount'] as int? ?? 0,
+        lastReadAt: _parseDate(json['lastReadAt']),
+        coverColors: [
+          for (final c in json['coverColors'] as List? ?? const [])
+            Color(c as int),
+        ],
+      );
 
   @override
   bool operator ==(Object other) => other is BookInfo && other.id == id;
@@ -91,6 +131,44 @@ class ReadingAlarm {
       enabled: enabled ?? this.enabled,
     );
   }
+
+  /// The next moment this alarm rings, strictly after [from].
+  DateTime nextOccurrence(DateTime from) {
+    for (var add = 0; add <= 7; add++) {
+      final day = DateTime(from.year, from.month, from.day + add);
+      final at = DateTime(day.year, day.month, day.day, time.hour, time.minute);
+      if (!at.isAfter(from)) continue;
+      if (repeatDays.isEmpty || repeatDays.contains(at.weekday - 1)) return at;
+    }
+    throw StateError('unreachable');
+  }
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'hour': time.hour,
+        'minute': time.minute,
+        'bookId': book.id,
+        'durationMin': durationMin,
+        'repeatDays': repeatDays.toList()..sort(),
+        'enabled': enabled,
+      };
+
+  /// Returns null if the alarm's book no longer exists.
+  static ReadingAlarm? fromJson(
+    Map<String, Object?> json,
+    BookInfo? Function(String id) findBook,
+  ) {
+    final book = findBook(json['bookId'] as String);
+    if (book == null) return null;
+    return ReadingAlarm(
+      id: json['id'] as String,
+      time: TimeOfDay(hour: json['hour'] as int, minute: json['minute'] as int),
+      book: book,
+      durationMin: json['durationMin'] as int,
+      repeatDays: {for (final d in json['repeatDays'] as List) d as int},
+      enabled: json['enabled'] as bool? ?? true,
+    );
+  }
 }
 
 class ReadingSession {
@@ -107,7 +185,34 @@ class ReadingSession {
 
   /// duration | stop | snooze | finished | error
   final String endReason;
+
+  Map<String, Object?> toJson() => {
+        'bookTitle': bookTitle,
+        'startedAt': startedAt.toIso8601String(),
+        'minutes': minutes,
+        'endReason': endReason,
+      };
+
+  factory ReadingSession.fromJson(Map<String, Object?> json) => ReadingSession(
+        bookTitle: json['bookTitle'] as String,
+        startedAt: DateTime.parse(json['startedAt'] as String),
+        minutes: json['minutes'] as int,
+        endReason: json['endReason'] as String? ?? 'stop',
+      );
 }
+
+/// Cover gradients given to imported books.
+const List<List<Color>> coverPalette = [
+  [Color(0xFF2F4858), Color(0xFF4F7A8C)],
+  [Color(0xFFFCE3CF), Color(0xFFF2A772)],
+  [Color(0xFF3A2E4F), Color(0xFF6A5A8C)],
+  [Color(0xFF1F4D3A), Color(0xFF3E7C5E)],
+  [Color(0xFF1E2F5E), Color(0xFF3B4F86)],
+  [Color(0xFF5E2B2B), Color(0xFF8C4A3E)],
+];
+
+DateTime? _parseDate(Object? value) =>
+    value is String ? DateTime.tryParse(value) : null;
 
 String formatTime(TimeOfDay t) {
   final hour = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
@@ -132,7 +237,7 @@ String formatClock(Duration d) {
   return d.inHours > 0 ? '${d.inHours}:$m:$s' : '$m:$s';
 }
 
-/// Sample data for the UI demo. Replace with the SQLite repositories.
+/// Demo content used by tests and the screenshot generator.
 class SampleData {
   SampleData._();
 
@@ -142,7 +247,8 @@ class SampleData {
       title: 'The Midnight Library',
       author: 'Matt Haig',
       chapter: 'Chapter 12',
-      progress: 0.42,
+      position: 420,
+      sentenceCount: 1000,
       lastReadAt: DateTime.now().subtract(const Duration(hours: 20)),
       coverColors: const [Color(0xFF1E2F5E), Color(0xFF3B4F86)],
     ),
@@ -152,7 +258,8 @@ class SampleData {
       author: 'James Clear',
       format: 'PDF',
       chapter: 'Chapter 4',
-      progress: 0.18,
+      position: 180,
+      sentenceCount: 1000,
       lastReadAt: DateTime.now().subtract(const Duration(days: 3)),
       coverColors: const [Color(0xFFFBD9BF), Color(0xFFF4B083)],
     ),
@@ -161,7 +268,8 @@ class SampleData {
       title: 'Project Hail Mary',
       author: 'Andy Weir',
       chapter: 'Chapter 21',
-      progress: 0.67,
+      position: 670,
+      sentenceCount: 1000,
       lastReadAt: DateTime.now().subtract(const Duration(days: 1)),
       coverColors: const [Color(0xFF14182B), Color(0xFF2D3558)],
     ),
@@ -199,18 +307,4 @@ class SampleData {
           ),
     ];
   }
-
-  static const voices = [
-    'English (Nigeria), female',
-    'English (UK), male',
-    'English (US), female',
-    'English (US), male',
-  ];
-
-  static final List<List<Color>> coverPalette = [
-    const [Color(0xFF2F4858), Color(0xFF4F7A8C)],
-    const [Color(0xFFFCE3CF), Color(0xFFF2A772)],
-    const [Color(0xFF3A2E4F), Color(0xFF6A5A8C)],
-    const [Color(0xFF1F4D3A), Color(0xFF3E7C5E)],
-  ];
 }

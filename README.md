@@ -1,6 +1,29 @@
 # flutterreadalarm
 Repo for the ReadAlarm Mobile App
 
+## What works
+
+- **Library:** import PDF and EPUB files (up to 100 MB) with the system file
+  picker. Text, title, author and chapters are extracted on the device.
+  Scanned PDFs, password-protected PDFs and DRM EPUBs are rejected with an
+  explanation.
+- **Reading aloud:** the phone's text-to-speech engine reads sentence by
+  sentence, with pause/resume, skip, speed, and (Premium) voice and pitch.
+  A foreground service keeps reading with the screen locked and puts
+  Pause/Stop on the lock screen. Your place is saved as you go.
+- **Alarms:** exact alarms per weekday or one-off. They ring over the lock
+  screen, keep ringing until answered, survive reboots, and offer Start
+  reading or Snooze 10 min. Alarm sessions stop after 15/30/60 minutes.
+- **Onboarding and Settings → Alarm health:** real Android permission
+  requests (notifications, exact alarms/full-screen alarms, battery
+  optimisation) and a guide for your phone brand's auto-start setting.
+- **Stats:** minutes read per day, weekly total and streak from your
+  sessions. Everything is saved on the device.
+
+**Simulated for now:** billing (the paywall's purchase just unlocks Premium
+locally) and ads (the banner is a placeholder; the rewarded ad unlocks
+60-minute sessions without showing one).
+
 ## Development
 
 ```sh
