@@ -116,19 +116,18 @@ void main() {
 
     await tapText(tester, 'Library');
     await _shot(tester, '14_library');
+    await tapText(tester, 'Project Hail Mary');
+    await _shot(tester, '14b_library_book_options');
+    await tapText(tester, 'Cancel');
     await tapText(tester, 'Stats');
     await _shot(tester, '15_stats');
     await tapText(tester, 'Settings');
     await _shot(tester, '16_settings');
     await tapText(tester, 'Home');
 
-    // Free tier already has the maximum number of alarms, so this opens the
-    // paywall; close it and edit an existing alarm instead.
+    // Free users can have 3 alarms; the demo has 2, so this opens the editor.
     await tester.tap(find.bySemanticsLabel('Add alarm'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Close'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('7:00 AM').first);
     await _shot(tester, '17_set_alarm');
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();

@@ -13,8 +13,10 @@ import 'set_alarm_screen.dart';
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
+  /// Opens the alarm editor for [existing], or for a new alarm (reading
+  /// [book] if given). Free users at the alarm limit get the paywall.
   static Future<void> openEditor(BuildContext context,
-      {ReadingAlarm? existing}) async {
+      {ReadingAlarm? existing, BookInfo? book}) async {
     final state = AppScope.of(context);
     if (existing == null && !state.canAddAlarm) {
       await PaywallScreen.open(context);
@@ -27,7 +29,9 @@ class HomeScreen extends StatelessWidget {
       return;
     }
     final result = await Navigator.of(context).push<ReadingAlarm>(
-      MaterialPageRoute(builder: (_) => SetAlarmScreen(initial: existing)),
+      MaterialPageRoute(
+        builder: (_) => SetAlarmScreen(initial: existing, initialBook: book),
+      ),
     );
     if (result != null) state.upsertAlarm(result);
   }

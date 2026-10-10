@@ -29,7 +29,7 @@ class AppState extends ChangeNotifier {
   }
 
   static const freeBookLimit = 3; // PAY-2
-  static const freeAlarmLimit = 2; // PAY-2
+  static const freeAlarmLimit = 3; // PAY-2
   static const maxStoredSessions = 1000;
 
   final AppServices services;

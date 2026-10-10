@@ -12,9 +12,12 @@ import '../widgets/navy_header.dart';
 /// Screen — create or edit an alarm (ALM-1). Pops with the saved [ReadingAlarm].
 /// 60-min sessions need Premium or a rewarded-ad unlock (PAY-2, ADS-4).
 class SetAlarmScreen extends StatefulWidget {
-  const SetAlarmScreen({super.key, this.initial});
+  const SetAlarmScreen({super.key, this.initial, this.initialBook});
 
   final ReadingAlarm? initial;
+
+  /// Book preselected for a new alarm (e.g. from the Library).
+  final BookInfo? initialBook;
 
   @override
   State<SetAlarmScreen> createState() => _SetAlarmScreenState();
@@ -35,7 +38,8 @@ class _SetAlarmScreenState extends State<SetAlarmScreen> {
     final books = AppScope.of(context).books;
     final a = widget.initial;
     _time = a?.time ?? const TimeOfDay(hour: 7, minute: 0);
-    _book = (a != null && books.contains(a.book)) ? a.book : books.first;
+    final wanted = a?.book.id ?? widget.initialBook?.id;
+    _book = books.where((b) => b.id == wanted).firstOrNull ?? books.first;
     _durationIndex =
         ReadingAlarm.allowedDurations.indexOf(a?.durationMin ?? 30);
     _repeat = Set.of(a?.repeatDays ?? {0, 2, 4});

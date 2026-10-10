@@ -14,6 +14,17 @@ void main() {
       final (state, _) = await demoState();
       expect(state.books.length, AppState.freeBookLimit);
       expect(state.canAddBook, isFalse);
+
+      // Free users get 3 alarms; the demo has 2.
+      expect(AppState.freeAlarmLimit, 3);
+      expect(state.canAddAlarm, isTrue);
+      await state.upsertAlarm(ReadingAlarm(
+        id: 'third',
+        time: const TimeOfDay(hour: 21, minute: 0),
+        book: state.books[2],
+        durationMin: 15,
+        repeatDays: const {},
+      ));
       expect(state.canAddAlarm, isFalse);
 
       state.setPremium(true);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/main.dart';
+import 'package:readalarm/models/reading_alarm.dart';
 import 'package:readalarm/screens/main_shell.dart';
 import 'package:readalarm/services/alarm_scheduler.dart';
 import 'package:readalarm/services/book_importer.dart';
@@ -110,6 +111,9 @@ void main() {
     await tester.pumpWidget(ReadAlarmApp(state: state));
     await tapText(tester, 'Library');
     await tapText(tester, 'Atomic Habits');
+    // Tapping a book offers reading or an alarm; it's 18% in.
+    expect(find.text('Set an alarm'), findsOneWidget);
+    await tapText(tester, 'Continue reading');
 
     expect(find.text('Reading now'), findsOneWidget);
     expect(fakes.speech.spoken, isNotEmpty);
@@ -230,6 +234,36 @@ void main() {
 
     await tapText(tester, 'Run 1-minute test alarm');
     expect(fakes.alarms.once, hasLength(1));
+    await close(tester, state);
+  });
+
+  testWidgets('a library book can start an alarm for itself', (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tapText(tester, 'Library');
+    await tapText(tester, 'Project Hail Mary');
+    await tapText(tester, 'Set an alarm');
+
+    // Free users can add a third alarm; the editor has the book chosen.
+    expect(find.text('Set new alarm'), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byType(DropdownButton<BookInfo>),
+            matching: find.text('Project Hail Mary')),
+        findsWidgets);
+    await tapText(tester, 'Save alarm');
+
+    final added = state.alarms.last;
+    expect(state.alarms, hasLength(3));
+    expect(added.book.id, 'b3');
+    expect(fakes.alarms.scheduled.containsKey(added.id), isTrue);
+
+    // A fourth alarm needs Premium.
+    await tapText(tester, 'Library');
+    await tester.tap(find.byTooltip('Book options').first);
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Set an alarm');
+    expect(find.text('ReadAlarm Premium'), findsOneWidget);
     await close(tester, state);
   });
 
