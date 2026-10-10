@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'book_text.dart';
@@ -22,6 +23,10 @@ class FileAppStorage implements AppStorage {
   static Future<FileAppStorage> open() async =>
       FileAppStorage._(await getApplicationSupportDirectory());
 
+  /// Storage in [dir], for tests.
+  @visibleForTesting
+  FileAppStorage.at(Directory dir) : this._(dir);
+
   final Directory _dir;
   Future<void> _writes = Future.value();
 
@@ -30,6 +35,7 @@ class FileAppStorage implements AppStorage {
 
   @override
   Future<Map<String, Object?>?> loadState() async {
+    await _writes; // Never read a state file that's being replaced.
     try {
       if (!_stateFile.existsSync()) return null;
       return jsonDecode(await _stateFile.readAsString())
@@ -64,12 +70,15 @@ class FileAppStorage implements AppStorage {
   /// Writes are serialised and atomic (temp file + rename), so a crash
   /// mid-write never leaves a truncated file behind.
   Future<void> _write(File file, String contents) {
-    return _writes = _writes.then((_) async {
+    final write = _writes.then((_) async {
       await file.parent.create(recursive: true);
       final tmp = File('${file.path}.tmp');
       await tmp.writeAsString(contents, flush: true);
       await tmp.rename(file.path);
     });
+    // A failed write must not block every later one.
+    _writes = write.catchError((Object e) => debugPrint('Save failed: $e'));
+    return write;
   }
 }
 

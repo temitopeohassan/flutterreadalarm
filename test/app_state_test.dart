@@ -56,6 +56,64 @@ void main() {
       restored.dispose();
     });
 
+    test('a second app instance never saves over the first one\'s progress',
+        () async {
+      // On Android an alarm can start a second copy of the app.
+      final (first, fakes) = await demoState(premium: true);
+      final second = await AppState.load(fakes.services);
+
+      // The alarm copy reads on and adds a book; the first copy is stale.
+      second.updatePosition('b2', 400);
+      final (format, extracted) = await fakes.importer
+          .extract(PickedBook(name: 'x.epub', read: () async => buildEpub()));
+      await second.addExtractedBook(
+          fileName: 'x.epub', format: format, extracted: extracted);
+      await pumpEventQueue();
+
+      // Back in the first copy: it reloads before doing anything.
+      await first.reloadFromStorage();
+      expect(first.bookById('b2').position, 400);
+      expect(first.books.map((b) => b.title), contains('The Quiet Morning'));
+
+      first.updatePosition('b1', 500);
+      await pumpEventQueue();
+      final saved = await AppState.load(fakes.services);
+      expect(saved.bookById('b1').position, 500);
+      expect(saved.bookById('b2').position, 400,
+          reason: 'the first copy must not restore its stale position');
+      expect(saved.books, hasLength(4));
+      for (final s in [first, second, saved]) {
+        s.dispose();
+      }
+    });
+
+    test('reloading leaves an active reading session alone', () async {
+      final (state, fakes) = await demoState();
+      await state.reader.start(state.books.first);
+      final other = await AppState.load(fakes.services);
+      other.updatePosition(state.books.first.id, 1);
+      await pumpEventQueue();
+
+      await state.reloadFromStorage();
+      expect(state.bookById(state.books.first.id).position, isNot(1));
+      await state.reader.finish('stop');
+      state.dispose();
+      other.dispose();
+    });
+
+    test('alarms for different books each read their own book', () async {
+      final (state, _) = await demoState(premium: true);
+      final [a1, a2] = state.alarms;
+      expect(a1.book.id, isNot(a2.book.id));
+      for (final (alarm, from) in [(a2, 180), (a1, 420), (a2, 180)]) {
+        await state.reader.start(state.bookById(alarm.book.id), durationMin: 1);
+        expect(state.reader.bookId, alarm.book.id);
+        expect(state.reader.index, from);
+        await state.reader.finish('stop');
+      }
+      state.dispose();
+    });
+
     test('alarms are scheduled with the OS and cancelled on delete', () async {
       final (state, fakes) = await demoState(premium: true);
       final enabled = state.alarms.where((a) => a.enabled).map((a) => a.id);

@@ -42,11 +42,14 @@ class _ReadAlarmAppState extends State<ReadAlarmApp>
     super.dispose();
   }
 
-  /// Permissions granted in system settings take effect on return.
+  /// On return: pick up changes saved by another instance of the app, and
+  /// permissions granted in system settings.
   @override
   void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
     if (lifecycle == AppLifecycleState.resumed) {
-      widget.state.refreshPermissions();
+      widget.state
+          .reloadFromStorage()
+          .whenComplete(widget.state.refreshPermissions);
     }
   }
 

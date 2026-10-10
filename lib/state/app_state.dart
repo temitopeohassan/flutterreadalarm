@@ -149,6 +149,21 @@ class AppState extends ChangeNotifier {
     });
   }
 
+  /// Re-reads saved state, so this copy of the app never acts on (and then
+  /// saves over) data another copy has changed since: on Android an alarm
+  /// can start a second instance. Every change is saved as it happens, so
+  /// what's on disk is never older than what's in memory. Skipped while a
+  /// book is being read, as this instance is then the one saving.
+  Future<void> reloadFromStorage() async {
+    if (reader.active || _disposed) return;
+    final json = await services.storage.loadState();
+    if (json == null || reader.active || _disposed) return;
+    _restore(json);
+    _texts.removeWhere((id, _) => _findBook(id) == null);
+    permissions['autoStart'] = autoStartConfirmed;
+    notifyListeners();
+  }
+
   // ---- Derived ----------------------------------------------------------
 
   bool get canAddBook => isPremium || books.length < freeBookLimit;

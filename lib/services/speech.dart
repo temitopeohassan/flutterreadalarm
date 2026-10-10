@@ -85,6 +85,11 @@ class TtsSpeechEngine implements SpeechEngine {
   final _tts = FlutterTts();
   Completer<bool>? _utterance;
 
+  /// Utterances we interrupted whose cancel event hasn't arrived yet.
+  /// Android reports a cancel after the fact; without this count it would
+  /// be taken for the next utterance's and stop it.
+  int _pendingCancels = 0;
+
   @override
   Future<void> init() async {
     await _tts.awaitSpeakCompletion(false);
@@ -92,7 +97,13 @@ class TtsSpeechEngine implements SpeechEngine {
       await _tts.setQueueMode(0); // Flush: a new utterance replaces the old.
     }
     _tts.setCompletionHandler(() => _finish(true));
-    _tts.setCancelHandler(() => _finish(false));
+    _tts.setCancelHandler(() {
+      if (_pendingCancels > 0) {
+        _pendingCancels--;
+      } else {
+        _finish(false);
+      }
+    });
     _tts.setErrorHandler((_) => _finish(false));
   }
 
@@ -142,7 +153,7 @@ class TtsSpeechEngine implements SpeechEngine {
 
   @override
   Future<bool> speak(String text) async {
-    _finish(false);
+    _interrupt();
     final utterance = _utterance = Completer<bool>();
     final result = await _tts.speak(text);
     if (result != 1) _finish(false);
@@ -151,7 +162,14 @@ class TtsSpeechEngine implements SpeechEngine {
 
   @override
   Future<void> stop() async {
+    _interrupt();
     await _tts.stop();
+  }
+
+  /// Ends the current utterance ourselves, expecting its cancel event.
+  void _interrupt() {
+    if (_utterance == null) return;
+    if (defaultTargetPlatform == TargetPlatform.android) _pendingCancels++;
     _finish(false);
   }
 }

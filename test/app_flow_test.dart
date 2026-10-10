@@ -232,6 +232,26 @@ void main() {
     expect(fakes.alarms.once, hasLength(1));
     await close(tester, state);
   });
+
+  testWidgets('returning to the app picks up another instance\'s changes',
+      (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tapText(tester, 'Library');
+
+    // Another copy of the app (started by an alarm) read on.
+    final other = await AppState.load(fakes.services);
+    other.updatePosition('b2', 500);
+    await tester.pump();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('50%'), findsOneWidget);
+
+    other.dispose();
+    await close(tester, state);
+  });
 }
 
 Future<PickedBook> _blankPdf() async =>
