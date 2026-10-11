@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/ads_service.dart';
 import '../services/speech.dart';
@@ -203,15 +202,20 @@ class SettingsScreen extends StatelessWidget {
                           applicationVersion: '0.1.0',
                         ),
                       ),
-                      if (kDebugMode)
-                        SwitchListTile(
-                          secondary: const Icon(Icons.bug_report_outlined,
-                              color: AppColors.navy),
-                          title: const Text('Debug: simulate Premium'),
-                          value: state.isPremium,
-                          activeTrackColor: AppColors.orange,
-                          onChanged: state.setPremium,
-                        ),
+                      // Billing isn't connected yet, so a "purchase" just
+                      // switches Premium on; this switches it back off.
+                      // Remove once RevenueCat is wired up.
+                      SwitchListTile(
+                        secondary: const Icon(Icons.science_outlined,
+                            color: AppColors.navy),
+                        title: const Text('Test mode: Premium'),
+                        subtitle: const Text(
+                            'Billing isn\'t connected yet. Turn off to use '
+                            'the free tier.'),
+                        value: state.isPremium,
+                        activeTrackColor: AppColors.orange,
+                        onChanged: state.setPremium,
+                      ),
                     ],
                   ),
                 ),

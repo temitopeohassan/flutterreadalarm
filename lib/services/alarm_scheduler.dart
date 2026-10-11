@@ -282,9 +282,11 @@ class NotificationAlarmScheduler implements AlarmScheduler {
     final now = DateTime.now();
 
     if (alarm.repeatDays.isEmpty) {
+      final at = alarm.nextOccurrence(now);
+      if (!at.isAfter(now)) return; // A dated one-off whose day has passed.
       await _plugin.zonedSchedule(
         id: _notificationId(alarm.id, _onceSlot),
-        scheduledDate: tz.TZDateTime.from(alarm.nextOccurrence(now), tz.local),
+        scheduledDate: tz.TZDateTime.from(at, tz.local),
         notificationDetails: _alarmDetails(),
         androidScheduleMode: AndroidScheduleMode.alarmClock,
         title: payload.title,

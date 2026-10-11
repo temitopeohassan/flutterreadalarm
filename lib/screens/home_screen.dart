@@ -28,12 +28,12 @@ class HomeScreen extends StatelessWidget {
       );
       return;
     }
-    final result = await Navigator.of(context).push<ReadingAlarm>(
+    // The editor saves the alarm itself (it checks for clashes first).
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => SetAlarmScreen(initial: existing, initialBook: book),
       ),
     );
-    if (result != null) state.upsertAlarm(result);
   }
 
   @override
@@ -157,15 +157,6 @@ class _AlarmCard extends StatelessWidget {
   final VoidCallback onTap;
   final ValueChanged<bool> onToggle;
 
-  static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-  String get _repeatLabel {
-    if (alarm.repeatDays.isEmpty) return 'Once';
-    if (alarm.repeatDays.length == 7) return 'Every day';
-    final sorted = alarm.repeatDays.toList()..sort();
-    return sorted.map((d) => _days[d]).join(', ');
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -210,7 +201,7 @@ class _AlarmCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        _repeatLabel,
+                        alarm.scheduleLabel,
                         style: const TextStyle(
                             fontSize: 12, color: AppColors.textMuted),
                       ),

@@ -362,8 +362,36 @@ class AppState extends ChangeNotifier {
     await _schedule(alarm);
   }
 
-  Future<void> toggleAlarm(ReadingAlarm alarm, bool enabled) =>
-      upsertAlarm(alarm.copyWith(enabled: enabled));
+  /// Saves an alarm from the editor, enforcing the free alarm limit, one
+  /// alarm per moment, and one-off alarms being in the future.
+  Future<AlarmSaveResult> saveAlarm(ReadingAlarm alarm) async {
+    final isNew = !alarms.any((a) => a.id == alarm.id);
+    if (isNew && !canAddAlarm) return const AlarmSaveResult.limitReached();
+    final once = alarm.onceAt;
+    if (once != null && !once.isAfter(DateTime.now())) {
+      return const AlarmSaveResult.inPast();
+    }
+    final clash = clashFor(alarm);
+    if (clash != null) return AlarmSaveResult.clash(clash);
+    await upsertAlarm(alarm);
+    return const AlarmSaveResult.saved();
+  }
+
+  /// Another alarm that would ring at the same moment as [alarm].
+  ReadingAlarm? clashFor(ReadingAlarm alarm) =>
+      alarms.where(alarm.clashesWith).firstOrNull;
+
+  Future<void> toggleAlarm(ReadingAlarm alarm, bool enabled) {
+    var updated = alarm.copyWith(enabled: enabled);
+    // A dated one-off alarm switched back on after its day rings next time.
+    final once = updated.onceAt;
+    if (enabled && once != null && !once.isAfter(DateTime.now())) {
+      final next =
+          updated.copyWith(date: () => null).nextOccurrence(DateTime.now());
+      updated = updated.copyWith(date: () => next);
+    }
+    return upsertAlarm(updated);
+  }
 
   Future<void> deleteAlarm(ReadingAlarm alarm) async {
     alarms.removeWhere((a) => a.id == alarm.id);
@@ -513,6 +541,28 @@ class AppState extends ChangeNotifier {
         'Good morning. This is how ReadAlarm will read your book to you.');
   }
 }
+
+/// Outcome of [AppState.saveAlarm].
+class AlarmSaveResult {
+  const AlarmSaveResult.saved()
+      : status = AlarmSaveStatus.saved,
+        clash = null;
+  const AlarmSaveResult.limitReached()
+      : status = AlarmSaveStatus.limitReached,
+        clash = null;
+  const AlarmSaveResult.inPast()
+      : status = AlarmSaveStatus.inPast,
+        clash = null;
+  const AlarmSaveResult.clash(ReadingAlarm this.clash)
+      : status = AlarmSaveStatus.clash;
+
+  final AlarmSaveStatus status;
+
+  /// The alarm already set for that moment, when [status] is clash.
+  final ReadingAlarm? clash;
+}
+
+enum AlarmSaveStatus { saved, limitReached, inPast, clash }
 
 /// A finished reading session, for the Session complete screen.
 class CompletedSession {

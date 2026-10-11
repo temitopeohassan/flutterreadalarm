@@ -267,6 +267,60 @@ void main() {
     await close(tester, state);
   });
 
+  testWidgets('the editor refuses a second alarm for the same moment',
+      (tester) async {
+    final (state, _) = await demoState(premium: true);
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+
+    // 7:00 Mon/Wed/Fri is taken, so a new alarm starts at 7:30.
+    await tester.tap(find.bySemanticsLabel('Add alarm'));
+    await tester.pumpAndSettle();
+    expect(find.text('07'), findsOneWidget);
+    expect(find.text('30'), findsWidgets); // minutes (and the 30-min slider)
+
+    for (var i = 0; i < 30; i++) {
+      await tester.tap(find.byTooltip('Earlier minute'));
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('00'), findsOneWidget);
+    final count = state.alarms.length;
+    await tapText(tester, 'Save alarm');
+
+    expect(find.text('An alarm is already set for then'), findsOneWidget);
+    expect(find.textContaining('The Midnight Library'), findsWidgets);
+    await tapText(tester, 'OK');
+    expect(state.alarms, hasLength(count));
+    expect(find.text('Set new alarm'), findsOneWidget, reason: 'still open');
+    await close(tester, state);
+  });
+
+  testWidgets('an alarm without repeat days asks for its date', (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Add alarm'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Date'), findsNothing);
+    for (final day in ['Monday', 'Wednesday', 'Friday']) {
+      await tester.tap(find.bySemanticsLabel(RegExp('^$day')));
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('Date'), findsOneWidget);
+    expect(find.textContaining(RegExp('^(Today|Tomorrow), ')), findsOneWidget);
+
+    await tapText(tester, 'Save alarm');
+    final added = state.alarms.last;
+    expect(added.isOneOff, isTrue);
+    expect(added.date, isNotNull);
+    expect(added.onceAt!.isAfter(DateTime.now()), isTrue);
+    expect(fakes.alarms.scheduled.containsKey(added.id), isTrue);
+    expect(find.textContaining('Once · '), findsOneWidget);
+    await close(tester, state);
+  });
+
   testWidgets('returning to the app picks up another instance\'s changes',
       (tester) async {
     final (state, fakes) = await demoState();

@@ -100,6 +100,7 @@ class ReadingAlarm {
     required this.durationMin,
     required this.repeatDays,
     this.enabled = true,
+    this.date,
   });
 
   final String id;
@@ -113,6 +114,13 @@ class ReadingAlarm {
   final Set<int> repeatDays;
   final bool enabled;
 
+  /// The day a one-off alarm rings (time of day ignored). Null for
+  /// repeating alarms, and for one-offs saved before dates were stored,
+  /// which ring at the next occurrence of [time].
+  final DateTime? date;
+
+  bool get isOneOff => repeatDays.isEmpty;
+
   static const List<int> allowedDurations = [15, 30, 60];
 
   ReadingAlarm copyWith({
@@ -121,6 +129,7 @@ class ReadingAlarm {
     int? durationMin,
     Set<int>? repeatDays,
     bool? enabled,
+    DateTime? Function()? date,
   }) {
     return ReadingAlarm(
       id: id,
@@ -129,11 +138,22 @@ class ReadingAlarm {
       durationMin: durationMin ?? this.durationMin,
       repeatDays: repeatDays ?? this.repeatDays,
       enabled: enabled ?? this.enabled,
+      date: date != null ? date() : this.date,
     );
   }
 
-  /// The next moment this alarm rings, strictly after [from].
+  /// When a dated one-off alarm rings (which may be in the past).
+  DateTime? get onceAt {
+    final d = date;
+    if (!isOneOff || d == null) return null;
+    return DateTime(d.year, d.month, d.day, time.hour, time.minute);
+  }
+
+  /// The next moment this alarm rings, strictly after [from]. A dated
+  /// one-off alarm returns its own moment, even if that has passed.
   DateTime nextOccurrence(DateTime from) {
+    final once = onceAt;
+    if (once != null) return once;
     for (var add = 0; add <= 7; add++) {
       final day = DateTime(from.year, from.month, from.day + add);
       final at = DateTime(day.year, day.month, day.day, time.hour, time.minute);
@@ -143,10 +163,43 @@ class ReadingAlarm {
     throw StateError('unreachable');
   }
 
+  static const _dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  /// When it rings: "Mon, Wed, Fri", "Every day" or "Once · Sat 10 Oct".
+  String get scheduleLabel {
+    if (isOneOff) {
+      return date == null ? 'Once' : 'Once · ${formatDay(date!)}';
+    }
+    if (repeatDays.length == 7) return 'Every day';
+    final sorted = repeatDays.toList()..sort();
+    return sorted.map((d) => _dayNames[d]).join(', ');
+  }
+
+  /// Whether this alarm and [other] would ring at the same moment on some
+  /// day: the same time on a shared weekday or the same date.
+  bool clashesWith(ReadingAlarm other) {
+    if (other.id == id) return false;
+    if (time.hour != other.time.hour || time.minute != other.time.minute) {
+      return false;
+    }
+    Set<int> days(ReadingAlarm a) => a.isOneOff
+        ? {a.nextOccurrence(DateTime.now()).weekday - 1}
+        : a.repeatDays;
+    if (isOneOff && other.isOneOff) {
+      final a = nextOccurrence(DateTime.now());
+      final b = other.nextOccurrence(DateTime.now());
+      return a.year == b.year && a.month == b.month && a.day == b.day;
+    }
+    return days(this).intersection(days(other)).isNotEmpty;
+  }
+
   Map<String, Object?> toJson() => {
         'id': id,
         'hour': time.hour,
         'minute': time.minute,
+        if (date != null)
+          'date':
+              DateTime(date!.year, date!.month, date!.day).toIso8601String(),
         'bookId': book.id,
         'durationMin': durationMin,
         'repeatDays': repeatDays.toList()..sort(),
@@ -167,6 +220,7 @@ class ReadingAlarm {
       durationMin: json['durationMin'] as int,
       repeatDays: {for (final d in json['repeatDays'] as List) d as int},
       enabled: json['enabled'] as bool? ?? true,
+      date: _parseDate(json['date']),
     );
   }
 }
@@ -213,6 +267,26 @@ const List<List<Color>> coverPalette = [
 
 DateTime? _parseDate(Object? value) =>
     value is String ? DateTime.tryParse(value) : null;
+
+/// "Sat 10 Oct".
+String formatDay(DateTime d) {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]}';
+}
 
 String formatTime(TimeOfDay t) {
   final hour = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;

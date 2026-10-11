@@ -28,6 +28,9 @@ class _SetAlarmScreenState extends State<SetAlarmScreen> {
   late BookInfo _book;
   late int _durationIndex;
   late Set<int> _repeat;
+
+  /// Day a one-off alarm rings; null = the next time [_time] comes round.
+  DateTime? _date;
   bool _initialised = false;
 
   @override
@@ -43,6 +46,50 @@ class _SetAlarmScreenState extends State<SetAlarmScreen> {
     _durationIndex =
         ReadingAlarm.allowedDurations.indexOf(a?.durationMin ?? 30);
     _repeat = Set.of(a?.repeatDays ?? {0, 2, 4});
+    _date = a?.date;
+    if (a == null) _time = _firstFreeTime(AppScope.of(context));
+  }
+
+  /// For a new alarm: 7:00 AM, or the next half hour without an alarm on
+  /// the default days, so saving straight away doesn't clash.
+  TimeOfDay _firstFreeTime(AppState state) {
+    var minutes = _time.hour * 60 + _time.minute;
+    for (var i = 0; i < 48; i++) {
+      final time = TimeOfDay(hour: minutes ~/ 60 % 24, minute: minutes % 60);
+      _time = time;
+      if (state.clashFor(_draft()) == null) return time;
+      minutes += 30;
+    }
+    return const TimeOfDay(hour: 7, minute: 0);
+  }
+
+  /// The day a one-off alarm with the current settings rings on.
+  DateTime get _onceDay {
+    final at = _draft(date: _date).nextOccurrence(DateTime.now());
+    return DateTime(at.year, at.month, at.day);
+  }
+
+  ReadingAlarm _draft({DateTime? date}) => ReadingAlarm(
+        id: widget.initial?.id ??
+            DateTime.now().microsecondsSinceEpoch.toString(),
+        time: _time,
+        book: _book,
+        durationMin: _duration,
+        repeatDays: Set.of(_repeat),
+        enabled: widget.initial?.enabled ?? true,
+        date: _repeat.isEmpty ? date : null,
+      );
+
+  Future<void> _pickDate() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _onceDay.isBefore(today) ? today : _onceDay,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
+      helpText: 'Alarm date',
+    );
+    if (picked != null) setState(() => _date = picked);
   }
 
   Future<void> _onDurationChanged(int index) async {
@@ -108,17 +155,38 @@ class _SetAlarmScreenState extends State<SetAlarmScreen> {
 
   int get _duration => ReadingAlarm.allowedDurations[_durationIndex];
 
-  void _save() {
-    final alarm = ReadingAlarm(
-      id: widget.initial?.id ??
-          DateTime.now().microsecondsSinceEpoch.toString(),
-      time: _time,
-      book: _book,
-      durationMin: _duration,
-      repeatDays: _repeat,
-      enabled: widget.initial?.enabled ?? true,
-    );
-    Navigator.of(context).pop(alarm);
+  Future<void> _save() async {
+    final state = AppScope.of(context);
+    final alarm = _draft(date: _repeat.isEmpty ? _onceDay : null);
+    final result = await state.saveAlarm(alarm);
+    if (!mounted) return;
+    switch (result.status) {
+      case AlarmSaveStatus.saved:
+        Navigator.of(context).pop(true);
+      case AlarmSaveStatus.limitReached:
+        await PaywallScreen.open(context);
+      case AlarmSaveStatus.inPast:
+        showSnack(context, 'That time has already passed. Pick a later time.');
+      case AlarmSaveStatus.clash:
+        final other = result.clash!;
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('An alarm is already set for then'),
+            content: Text(
+              '${formatTime(other.time)} · ${other.scheduleLabel}\n'
+              '${other.book.title}\n\n'
+              'Pick another time or day, or edit that alarm instead.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+    }
   }
 
   @override
@@ -182,6 +250,16 @@ class _SetAlarmScreenState extends State<SetAlarmScreen> {
                     _repeat.contains(d) ? _repeat.remove(d) : _repeat.add(d);
                   }),
                 ),
+                if (_repeat.isEmpty) ...[
+                  const SizedBox(height: 20),
+                  const _SectionLabel('Date'),
+                  _DateField(day: _onceDay, onTap: _pickDate),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'No repeat days: rings once on this date.',
+                    style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                  ),
+                ],
               ],
             ),
           ),
@@ -303,6 +381,7 @@ class _TimeSpinnerState extends State<_TimeSpinner> {
         children: [
           _Chevron(
             icon: Icons.keyboard_arrow_up_rounded,
+            tooltip: 'Later ${label.toLowerCase()}',
             onTap: () => _step(field, 1),
           ),
           GestureDetector(
@@ -332,6 +411,7 @@ class _TimeSpinnerState extends State<_TimeSpinner> {
           ),
           _Chevron(
             icon: Icons.keyboard_arrow_down_rounded,
+            tooltip: 'Earlier ${label.toLowerCase()}',
             onTap: () => _step(field, -1),
           ),
         ],
@@ -341,19 +421,27 @@ class _TimeSpinnerState extends State<_TimeSpinner> {
 }
 
 class _Chevron extends StatelessWidget {
-  const _Chevron({required this.icon, required this.onTap});
+  const _Chevron({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
   final IconData icon;
+  final String tooltip;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkResponse(
-      onTap: onTap,
-      radius: 22,
-      child: SizedBox(
-        width: 48,
-        height: 32,
-        child: Icon(icon, color: AppColors.textMuted),
+    return Tooltip(
+      message: tooltip,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 22,
+        child: SizedBox(
+          width: 48,
+          height: 32,
+          child: Icon(icon, color: AppColors.textMuted),
+        ),
       ),
     );
   }
@@ -545,6 +633,50 @@ class _RepeatDays extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _DateField extends StatelessWidget {
+  const _DateField({required this.day, required this.onTap});
+  final DateTime day;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final label = switch (day.difference(today).inDays) {
+      0 => 'Today, ${formatDay(day)}',
+      1 => 'Tomorrow, ${formatDay(day)}',
+      _ => '${formatDay(day)} ${day.year}',
+    };
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.navy, width: 1.4),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.event_rounded, color: AppColors.navy),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(label,
+                    style: const TextStyle(
+                        fontSize: 16, color: AppColors.textPrimary)),
+              ),
+              const Icon(Icons.edit_calendar_rounded,
+                  color: AppColors.textSecondary, size: 20),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

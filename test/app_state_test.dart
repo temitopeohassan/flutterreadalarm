@@ -270,6 +270,129 @@ void main() {
     });
   });
 
+  group('saving alarms', () {
+    ReadingAlarm alarmAt(String id, int hour, int minute,
+            {Set<int> days = const {}, DateTime? date, String book = 'b3'}) =>
+        ReadingAlarm(
+          id: id,
+          time: TimeOfDay(hour: hour, minute: minute),
+          book: SampleData.books.firstWhere((b) => b.id == book),
+          durationMin: 15,
+          repeatDays: days,
+          date: date,
+        );
+    final tomorrow =
+        DateUtils.dateOnly(DateTime.now()).add(const Duration(days: 1));
+
+    test('free users are stopped at 3 alarms however the save happens',
+        () async {
+      final (state, fakes) = await demoState(); // 2 alarms
+      expect((await state.saveAlarm(alarmAt('3', 21, 0))).status,
+          AlarmSaveStatus.saved);
+      expect((await state.saveAlarm(alarmAt('4', 22, 0))).status,
+          AlarmSaveStatus.limitReached);
+      expect(state.alarms, hasLength(3));
+      expect(fakes.alarms.scheduled.containsKey('4'), isFalse);
+
+      // Editing an existing alarm is still allowed at the limit.
+      expect(
+          (await state.saveAlarm(state.alarms.first
+                  .copyWith(time: const TimeOfDay(hour: 6, minute: 0))))
+              .status,
+          AlarmSaveStatus.saved);
+
+      state.setPremium(true);
+      expect((await state.saveAlarm(alarmAt('4', 22, 0))).status,
+          AlarmSaveStatus.saved);
+      state.dispose();
+    });
+
+    test('two repeating alarms clash only on a shared day', () async {
+      final (state, _) = await demoState(premium: true);
+      // a1 rings 7:00 Mon, Wed, Fri.
+      final clash = await state.saveAlarm(alarmAt('x', 7, 0, days: {2, 6}));
+      expect(clash.status, AlarmSaveStatus.clash);
+      expect(clash.clash!.id, 'a1');
+
+      expect((await state.saveAlarm(alarmAt('y', 7, 0, days: {1, 3}))).status,
+          AlarmSaveStatus.saved,
+          reason: 'Tue, Thu: no shared day');
+      expect((await state.saveAlarm(alarmAt('z', 7, 1, days: {0}))).status,
+          AlarmSaveStatus.saved,
+          reason: 'a minute later');
+      state.dispose();
+    });
+
+    test('one-off alarms clash by date and time', () async {
+      final (state, _) = await demoState(premium: true);
+      final day = tomorrow.add(const Duration(days: 30));
+      expect((await state.saveAlarm(alarmAt('o1', 16, 0, date: day))).status,
+          AlarmSaveStatus.saved);
+
+      final same = await state.saveAlarm(alarmAt('o2', 16, 0, date: day));
+      expect(same.status, AlarmSaveStatus.clash);
+      expect(same.clash!.id, 'o1');
+
+      final nextDay = day.add(const Duration(days: 1));
+      expect(
+          (await state.saveAlarm(alarmAt('o3', 16, 0, date: nextDay))).status,
+          AlarmSaveStatus.saved);
+
+      // A repeating alarm on that weekday at that time clashes too.
+      final weekly =
+          await state.saveAlarm(alarmAt('w', 16, 0, days: {day.weekday - 1}));
+      expect(weekly.status, AlarmSaveStatus.clash);
+      state.dispose();
+    });
+
+    test('an alarm never clashes with itself when edited', () async {
+      final (state, _) = await demoState();
+      final a1 = state.alarms.first;
+      expect((await state.saveAlarm(a1.copyWith(durationMin: 15))).status,
+          AlarmSaveStatus.saved);
+      state.dispose();
+    });
+
+    test('a one-off alarm in the past is refused', () async {
+      final (state, _) = await demoState(premium: true);
+      final yesterday = tomorrow.subtract(const Duration(days: 2));
+      expect(
+          (await state.saveAlarm(alarmAt('p', 9, 0, date: yesterday))).status,
+          AlarmSaveStatus.inPast);
+      state.dispose();
+    });
+
+    test('a dated one-off is scheduled for its day and survives a restart',
+        () async {
+      final (state, fakes) = await demoState(premium: true);
+      final day = tomorrow.add(const Duration(days: 5));
+      await state.saveAlarm(alarmAt('o', 16, 0, date: day));
+      expect(fakes.alarms.scheduled['o']!.nextOccurrence(DateTime.now()),
+          DateTime(day.year, day.month, day.day, 16));
+      await pumpEventQueue();
+      state.dispose();
+
+      final restored = await AppState.load(fakes.services);
+      final o = restored.alarms.firstWhere((a) => a.id == 'o');
+      expect(o.date, day);
+      expect(o.scheduleLabel, 'Once · ${formatDay(day)}');
+      restored.dispose();
+    });
+
+    test('switching a past one-off back on moves it to its next time',
+        () async {
+      final (state, _) = await demoState(premium: true);
+      final old = alarmAt('old', 6, 0,
+          date: tomorrow.subtract(const Duration(days: 10)));
+      await state.upsertAlarm(old.copyWith(enabled: false));
+      await state.toggleAlarm(state.alarms.last, true);
+      final moved = state.alarms.last;
+      expect(moved.onceAt!.isAfter(DateTime.now()), isTrue);
+      expect(moved.onceAt!.difference(DateTime.now()).inHours, lessThan(25));
+      state.dispose();
+    });
+  });
+
   group('ReadingAlarm', () {
     test('nextOccurrence honours the time and repeat days', () {
       final alarm = ReadingAlarm(
