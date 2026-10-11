@@ -168,6 +168,9 @@ class AppState extends ChangeNotifier {
   /// book is being read, as this instance is then the one saving.
   Future<void> reloadFromStorage() async {
     if (reader.active || _disposed) return;
+    // Let a save queued by a change just made start first; loading then
+    // waits for it, so it can't bring back older data.
+    await Future<void>.microtask(() {});
     final json = await services.storage.loadState();
     if (json == null || reader.active || _disposed) return;
     _restore(json);
@@ -700,8 +703,16 @@ class ReadingController extends ChangeNotifier {
 
   /// Starts reading [book] from its saved position. Any other session is
   /// finished first.
+  ///
+  /// The position always comes from the latest saved progress, never from
+  /// [book]: an alarm can carry an older copy of the book (for example
+  /// when it reaches an instance of the app that was in the background).
   Future<ReadingStart> start(BookInfo book, {int? durationMin}) async {
     if (_state.dailyLimitReached) return ReadingStart.dailyLimit;
+    if (!active) {
+      await _state.reloadFromStorage();
+      book = _state.findBook(book.id) ?? book;
+    }
     if (bookId == book.id) {
       this.durationMin = durationMin ?? this.durationMin;
       if (!playing) resume();
@@ -728,15 +739,15 @@ class ReadingController extends ChangeNotifier {
   }
 
   void _tick() {
-    if (!active) return;
+    if (!active || _ending) return;
     _countReading();
     if (_state.dailyLimitReached) {
-      finish('limit');
+      _endOnTimer('limit');
       return;
     }
     final limit = durationMin;
     if (limit != null && elapsed >= Duration(minutes: limit)) {
-      finish('duration');
+      _endOnTimer('duration');
       return;
     }
     if (clock.now().second == 0) _updateNotification();
@@ -854,6 +865,19 @@ class ReadingController extends ChangeNotifier {
       ].join(' · '),
       playing: playing,
     );
+  }
+
+  bool _ending = false;
+
+  /// Ends a session whose time is up. If Android paused the app with the
+  /// screen locked, the speech engine kept reading and its "sentence done"
+  /// events are queued up; take them in first so the saved position
+  /// matches what was actually read.
+  Future<void> _endOnTimer(String reason) async {
+    _ending = true;
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    _ending = false;
+    if (active) await finish(reason);
   }
 
   /// Handles a lock-screen notification button.

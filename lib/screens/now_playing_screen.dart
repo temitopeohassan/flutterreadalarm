@@ -240,6 +240,20 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                   ),
               ],
             ),
+            ValueListenableBuilder<String?>(
+              valueListenable: state.services.playback.problem,
+              builder: (context, problem, _) => problem == null
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(
+                        'Background reading couldn\'t start, so reading may '
+                        'stop when the screen locks. ($problem)',
+                        style: const TextStyle(
+                            fontSize: 13, color: AppColors.orangeDark),
+                      ),
+                    ),
+            ),
             if (state.freeReadingLeft case final left?)
               Padding(
                 padding: const EdgeInsets.only(top: 12),

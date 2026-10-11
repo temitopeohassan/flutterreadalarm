@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import 'package:readalarm/models/reading_alarm.dart';
 import 'package:readalarm/services/alarm_scheduler.dart';
@@ -153,6 +154,9 @@ class FakePermissions implements PermissionService {
 
 class FakePlayback implements PlaybackService {
   void Function(String)? onCommand;
+
+  @override
+  final ValueNotifier<String?> problem = ValueNotifier(null);
   bool visible = false;
   String text = '';
 
@@ -206,6 +210,11 @@ class FakeImporter implements BookImporter {
 }
 
 class FakeServices {
+  FakeServices({this.speechOverride});
+
+  /// Used instead of [speech], e.g. the real engine on a fake platform.
+  final SpeechEngine? speechOverride;
+
   final storage = MemoryAppStorage();
   final speech = FakeSpeech();
   final alarms = FakeAlarms();
@@ -215,7 +224,7 @@ class FakeServices {
 
   AppServices get services => AppServices(
         storage: storage,
-        speech: speech,
+        speech: speechOverride ?? speech,
         alarms: alarms,
         permissions: permissions,
         playback: playback,
@@ -245,8 +254,9 @@ Future<(AppState, FakeServices)> demoState({
   bool onboardingDone = true,
   bool premium = false,
   bool emptyLibrary = false,
+  SpeechEngine? speech,
 }) async {
-  final fakes = FakeServices();
+  final fakes = FakeServices(speechOverride: speech);
   if (!emptyLibrary) {
     final seed = AppState(
       services: fakes.services,

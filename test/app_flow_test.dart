@@ -209,7 +209,10 @@ void main() {
     await tester.tap(find.text('Go ad-free').first);
     await tester.pumpAndSettle();
 
-    for (final plan in ['Yearly', 'Monthly', 'Lifetime']) {
+    // Only monthly and yearly plans: no lifetime option.
+    expect(find.text('Lifetime'), findsNothing);
+    expect(find.textContaining('once'), findsNothing);
+    for (final plan in ['Yearly', 'Monthly']) {
       final rect = tester.getRect(find.text(plan));
       expect(rect.bottom, lessThan(tester.view.physicalSize.height / 3),
           reason: '$plan should be on screen');

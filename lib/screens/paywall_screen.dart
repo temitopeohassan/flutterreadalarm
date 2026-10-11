@@ -43,7 +43,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
   static const _plans = [
     _Plan('yearly', 'Yearly', '₦12,000 / year', 'Best value'),
     _Plan('monthly', 'Monthly', '₦1,500 / month', 'Cancel anytime'),
-    _Plan('lifetime', 'Lifetime', '₦25,000 once', 'Pay once, keep forever'),
   ];
 
   static const _benefits = [
