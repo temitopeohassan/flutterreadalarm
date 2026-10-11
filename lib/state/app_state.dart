@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 
 import '../models/reading_alarm.dart';
@@ -51,6 +52,13 @@ class AppState extends ChangeNotifier {
   /// Rewarded-ad unlock of the 60-min duration (ADS-4).
   DateTime? rewardedUnlockUntil;
 
+  /// Free reading allowance per day, reset at local midnight.
+  static const freeDailyReading = Duration(minutes: 15);
+
+  /// Day (yyyy-mm-dd) that [_freeReadToday] counts.
+  String _freeReadDay = '';
+  Duration _freeReadToday = Duration.zero;
+
   /// The user confirmed following the phone-brand auto-start guide.
   bool autoStartConfirmed = false;
 
@@ -96,6 +104,8 @@ class AppState extends ChangeNotifier {
         'onboardingDone': onboardingDone,
         'isPremium': isPremium,
         'rewardedUnlockUntil': rewardedUnlockUntil?.toIso8601String(),
+        'freeReadDay': _freeReadDay,
+        'freeReadSeconds': _freeReadToday.inSeconds,
         'autoStartConfirmed': autoStartConfirmed,
         'voice': voice?.toMap(),
         'speed': speed,
@@ -110,6 +120,8 @@ class AppState extends ChangeNotifier {
     isPremium = json['isPremium'] as bool? ?? false;
     rewardedUnlockUntil =
         DateTime.tryParse(json['rewardedUnlockUntil'] as String? ?? '');
+    _freeReadDay = json['freeReadDay'] as String? ?? '';
+    _freeReadToday = Duration(seconds: json['freeReadSeconds'] as int? ?? 0);
     autoStartConfirmed = json['autoStartConfirmed'] as bool? ?? false;
     voice = VoiceOption.fromMap(json['voice']);
     speed = (json['speed'] as num?)?.toDouble() ?? 1.0;
@@ -535,10 +547,48 @@ class AppState extends ChangeNotifier {
 
   Future<void> previewVoice() async {
     if (reader.active) return;
-    await services.speech
-        .configure(speed: speed, pitch: effectivePitch, voice: effectiveVoice);
-    await services.speech.speak(
-        'Good morning. This is how ReadAlarm will read your book to you.');
+    final speech = services.speech
+      ..onDone = null
+      ..onError = null;
+    await speech.configure(
+        speed: speed, pitch: effectivePitch, voice: effectiveVoice);
+    await speech.play(
+        ['Good morning. This is how ReadAlarm will read your book to you.']);
+  }
+
+  // ---- Free daily reading allowance ------------------------------------
+
+  static String _dayKey(DateTime t) =>
+      '${t.year}-${t.month.toString().padLeft(2, '0')}-'
+      '${t.day.toString().padLeft(2, '0')}';
+
+  /// Free reading left today; null for Premium (unlimited).
+  Duration? get freeReadingLeft {
+    if (isPremium) return null;
+    final used =
+        _freeReadDay == _dayKey(clock.now()) ? _freeReadToday : Duration.zero;
+    final left = freeDailyReading - used;
+    return left.isNegative ? Duration.zero : left;
+  }
+
+  bool get dailyLimitReached => freeReadingLeft == Duration.zero;
+
+  /// Time until the free allowance resets, at local midnight.
+  Duration get untilFreeReset {
+    final now = clock.now();
+    return DateTime(now.year, now.month, now.day + 1).difference(now);
+  }
+
+  /// Counts [read] against today's free allowance (no-op for Premium).
+  /// Saved with the next change, e.g. the reading position.
+  void countFreeReading(Duration read) {
+    if (isPremium || read <= Duration.zero) return;
+    final today = _dayKey(clock.now());
+    if (_freeReadDay != today) {
+      _freeReadDay = today;
+      _freeReadToday = Duration.zero;
+    }
+    _freeReadToday += read;
   }
 }
 
@@ -579,10 +629,21 @@ class CompletedSession {
   final String reason;
 }
 
-/// Reads a book aloud sentence by sentence (TTS-2..5), tracks the session
-/// clock and saves the reading position as it goes (PRG-1).
+/// How [ReadingController.start] went.
+enum ReadingStart { started, missingText, dailyLimit }
+
+/// Reads a book aloud (TTS-2..5), tracks the session clock and saves the
+/// reading position as it goes (PRG-1).
+///
+/// Sentences are queued with the speech engine [queueAhead] at a time, so
+/// reading carries on even while Android pauses the app with the screen
+/// locked; time is measured by the clock, not by counting timer ticks, so
+/// such pauses still count.
 class ReadingController extends ChangeNotifier {
   ReadingController(this._state);
+
+  /// Sentences handed to the speech engine ahead of the current one.
+  static const queueAhead = 40;
 
   final AppState _state;
 
@@ -590,7 +651,6 @@ class ReadingController extends ChangeNotifier {
   BookText? text;
   int index = 0;
   bool playing = false;
-  Duration elapsed = Duration.zero;
 
   /// Session length for alarm sessions; null = open-ended "Read now".
   int? durationMin;
@@ -599,10 +659,29 @@ class ReadingController extends ChangeNotifier {
   DateTime? _startedAt;
   double _progressBefore = 0;
   Timer? _ticker;
-  int _generation = 0;
   bool _disposed = false;
 
+  /// Reading time before the current stretch of playing.
+  Duration _banked = Duration.zero;
+  DateTime? _playingSince;
+
+  /// When reading time was last counted against the free allowance.
+  DateTime? _countedUntil;
+
+  /// First sentence not yet handed to the speech engine.
+  int _queuedUntil = 0;
+
+  /// Bumped whenever the queue is replaced, so callbacks from an older
+  /// queue are ignored.
+  int _generation = 0;
+
   bool get active => bookId != null;
+
+  Duration get elapsed {
+    final since = _playingSince;
+    return since == null ? _banked : _banked + clock.now().difference(since);
+  }
+
   String get currentSentence {
     final t = text;
     if (t == null || t.sentences.isEmpty) return '';
@@ -620,53 +699,74 @@ class ReadingController extends ChangeNotifier {
   String get chapter => text?.chapterAt(index) ?? '';
 
   /// Starts reading [book] from its saved position. Any other session is
-  /// finished first. Returns false if the book's text is missing.
-  Future<bool> start(BookInfo book, {int? durationMin}) async {
+  /// finished first.
+  Future<ReadingStart> start(BookInfo book, {int? durationMin}) async {
+    if (_state.dailyLimitReached) return ReadingStart.dailyLimit;
     if (bookId == book.id) {
       this.durationMin = durationMin ?? this.durationMin;
       if (!playing) resume();
-      return true;
+      return ReadingStart.started;
     }
     if (active) await finish('stop');
     final loaded = await _state.textFor(book.id);
-    if (loaded == null || loaded.sentences.isEmpty) return false;
+    if (loaded == null || loaded.sentences.isEmpty) {
+      return ReadingStart.missingText;
+    }
 
     bookId = book.id;
     text = loaded;
     index = book.isFinished ? 0 : book.position;
     this.durationMin = durationMin;
-    elapsed = Duration.zero;
+    _banked = Duration.zero;
+    _playingSince = null;
     lastCompleted = null;
-    _startedAt = DateTime.now();
+    _startedAt = clock.now();
     _progressBefore = book.isFinished ? 0 : book.progress;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     resume();
-    return true;
+    return ReadingStart.started;
   }
 
   void _tick() {
-    if (!playing) return;
-    elapsed += const Duration(seconds: 1);
+    if (!active) return;
+    _countReading();
+    if (_state.dailyLimitReached) {
+      finish('limit');
+      return;
+    }
     final limit = durationMin;
     if (limit != null && elapsed >= Duration(minutes: limit)) {
       finish('duration');
       return;
     }
-    if (elapsed.inSeconds % 60 == 0) _updateNotification();
+    if (clock.now().second == 0) _updateNotification();
     _notify();
   }
 
+  /// Counts time read since the last call against the free allowance.
+  void _countReading() {
+    final now = clock.now();
+    final from = _countedUntil;
+    _countedUntil = playing ? now : null;
+    if (playing && from != null) _state.countFreeReading(now.difference(from));
+  }
+
   void resume() {
-    if (!active) return;
+    if (!active || playing) return;
     playing = true;
+    _playingSince = _countedUntil = clock.now();
     _updateNotification();
     _notify();
     _speakFromHere();
   }
 
   Future<void> pause() async {
-    if (!active) return;
+    if (!active || !playing) return;
+    _countReading();
+    _banked = elapsed;
+    _playingSince = null;
     playing = false;
+    _countedUntil = null;
     _generation++;
     _notify();
     _updateNotification();
@@ -683,46 +783,57 @@ class ReadingController extends ChangeNotifier {
     index = (index + delta).clamp(0, count - 1);
     _savePosition();
     _notify();
-    if (playing) {
-      _generation++;
-      await _state.services.speech.stop();
-      _speakFromHere();
-    }
+    if (playing) await _speakFromHere();
   }
 
   /// Re-applies voice, speed and pitch, restarting the current sentence.
   Future<void> applyVoiceSettings() async {
-    if (!active || !playing) return;
-    _generation++;
-    await _state.services.speech.stop();
-    _speakFromHere();
+    if (active && playing) await _speakFromHere();
   }
 
+  /// (Re)starts the speech queue at the current sentence.
   Future<void> _speakFromHere() async {
     final generation = ++_generation;
-    final speech = _state.services.speech;
+    final speech = _state.services.speech
+      ..onDone = (() => _onSentenceDone(generation))
+      ..onError = (() => _onSpeechError(generation));
     await speech.configure(
       speed: _state.speed,
       pitch: _state.effectivePitch,
       voice: _state.effectiveVoice,
     );
-    while (generation == _generation && playing && active) {
-      final sentences = text!.sentences;
-      if (index >= sentences.length) {
-        await finish('finished');
-        return;
-      }
-      final completed = await speech.speak(sentences[index]);
-      if (generation != _generation || !playing || !active) return;
-      if (!completed) {
-        // The engine failed rather than being interrupted by us.
-        await pause();
-        return;
-      }
-      index++;
-      _savePosition();
-      _notify();
+    if (generation != _generation || !playing) return;
+    _queuedUntil = index;
+    await speech.play(_nextBatch());
+  }
+
+  List<String> _nextBatch() {
+    final sentences = text!.sentences;
+    final end = (index + queueAhead).clamp(0, sentences.length);
+    if (_queuedUntil >= end) return const [];
+    final batch = sentences.sublist(_queuedUntil, end);
+    _queuedUntil = end;
+    return batch;
+  }
+
+  void _onSentenceDone(int generation) {
+    if (generation != _generation || !active || !playing) return;
+    index++;
+    _savePosition();
+    if (index >= text!.sentences.length) {
+      finish('finished');
+      return;
     }
+    // Keep the engine's queue topped up.
+    if (_queuedUntil - index < queueAhead ~/ 2) {
+      final batch = _nextBatch();
+      if (batch.isNotEmpty) _state.services.speech.enqueue(batch);
+    }
+    _notify();
+  }
+
+  void _onSpeechError(int generation) {
+    if (generation == _generation) pause();
   }
 
   void _savePosition() {
@@ -752,23 +863,32 @@ class ReadingController extends ChangeNotifier {
   }
 
   /// Ends the session, saves progress and records it in the stats.
+  /// [reason]: duration | stop | finished | limit.
   Future<CompletedSession?> finish(String reason) async {
     final id = bookId;
     if (id == null) return null;
+    _countReading();
+    _banked = elapsed;
+    _playingSince = null;
+    _countedUntil = null;
     _generation++;
     _ticker?.cancel();
     _ticker = null;
     playing = false;
     _savePosition();
-    await _state.services.speech.stop();
+    final speech = _state.services.speech
+      ..onDone = null
+      ..onError = null;
+    await speech.stop();
     await _state.services.playback.hide();
 
-    final minutes = math.max(1, (elapsed.inSeconds / 60).ceil());
+    final read = _banked;
+    final minutes = math.max(1, (read.inSeconds / 60).ceil());
     final book = _state.findBook(id);
-    if (book != null && elapsed > Duration.zero) {
+    if (book != null && read > Duration.zero) {
       _state.addSession(ReadingSession(
         bookTitle: book.title,
-        startedAt: _startedAt ?? DateTime.now(),
+        startedAt: _startedAt ?? clock.now(),
         minutes: minutes,
         endReason: reason,
       ));

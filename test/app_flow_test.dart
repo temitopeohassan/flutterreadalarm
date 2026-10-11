@@ -31,7 +31,7 @@ void main() {
     state.dispose();
   }
 
-  testWidgets('onboarding: permissions, first book, test alarm, paywall',
+  testWidgets('onboarding: permissions, first book, test alarm, no paywall',
       (tester) async {
     final (state, fakes) =
         await demoState(onboardingDone: false, emptyLibrary: true);
@@ -64,9 +64,9 @@ void main() {
     expect(find.text('Test alarm scheduled'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5)); // Let the snackbar go.
 
+    // No paywall or free trial at the end of onboarding.
     await tapText(tester, 'Finish setup');
-    expect(find.text('ReadAlarm Premium'), findsOneWidget);
-    await tapText(tester, 'Continue with ads');
+    expect(find.text('ReadAlarm Premium'), findsNothing);
 
     expect(state.onboardingDone, isTrue);
     expect(find.byType(MainShell), findsOneWidget);
@@ -318,6 +318,51 @@ void main() {
     expect(added.onceAt!.isAfter(DateTime.now()), isTrue);
     expect(fakes.alarms.scheduled.containsKey(added.id), isTrue);
     expect(find.textContaining('Once · '), findsOneWidget);
+    await close(tester, state);
+  });
+
+  testWidgets('using up the free minutes shows when reading resets',
+      (tester) async {
+    final (state, _) = await demoState();
+    state.updatePosition('b2', 0);
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tapText(tester, 'Library');
+    await tapText(tester, 'Atomic Habits');
+    await tapText(tester, 'Start reading');
+    expect(
+        find.textContaining('Free reading left today: 15:00'), findsOneWidget);
+
+    await tester.pump(const Duration(minutes: 15, seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.text('You\'ve used today\'s 15 free minutes'), findsOneWidget);
+    expect(find.textContaining('resets at midnight'), findsOneWidget);
+
+    // Billing isn't connected: buying doesn't unlock Premium.
+    await tapText(tester, 'Continue');
+    expect(find.textContaining('isn\'t available yet'), findsOneWidget);
+    expect(state.isPremium, isFalse);
+
+    // Closing it shows the session summary; reading again is refused.
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('Session complete'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5)); // Let the message go.
+    await tapText(tester, 'Done');
+    await tapText(tester, 'Library');
+    await tapText(tester, 'Atomic Habits');
+    await tapText(tester, 'Continue reading');
+    expect(find.text('You\'ve used today\'s 15 free minutes'), findsOneWidget);
+    expect(state.reader.active, isFalse);
+    await close(tester, state);
+  });
+
+  testWidgets('Settings only offers switching Premium off', (tester) async {
+    final (state, _) = await demoState(premium: true);
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tapText(tester, 'Settings');
+    await tapText(tester, 'Test mode: Premium');
+    expect(state.isPremium, isFalse);
+    expect(find.text('Test mode: Premium'), findsNothing);
     await close(tester, state);
   });
 

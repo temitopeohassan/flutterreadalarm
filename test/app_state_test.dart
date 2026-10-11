@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/models/reading_alarm.dart';
@@ -266,6 +267,24 @@ void main() {
       await state.snoozeAlarm(alarm);
       expect(fakes.alarms.dismissed, ['once']);
       expect(fakes.alarms.once.single.$1.alarmId, 'once');
+      state.dispose();
+    });
+  });
+
+  group('free daily reading', () {
+    test('resets at local midnight', () async {
+      final (state, _) = await demoState();
+      final evening = DateTime(2026, 11, 10, 23, 50);
+      withClock(Clock.fixed(evening), () {
+        state.countFreeReading(const Duration(minutes: 15));
+        expect(state.dailyLimitReached, isTrue);
+        expect(state.untilFreeReset, const Duration(minutes: 10));
+      });
+      withClock(Clock.fixed(DateTime(2026, 11, 11, 0, 1)), () {
+        expect(state.freeReadingLeft, AppState.freeDailyReading);
+        state.countFreeReading(const Duration(minutes: 1));
+        expect(state.freeReadingLeft!.inMinutes, 14);
+      });
       state.dispose();
     });
   });

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'models/reading_alarm.dart';
 import 'screens/main_shell.dart';
 import 'screens/now_playing_screen.dart';
+import 'screens/paywall_screen.dart';
 import 'screens/onboarding/onboarding_flow.dart';
 import 'screens/reading_reminder_screen.dart';
 import 'services/alarm_scheduler.dart';
@@ -32,12 +33,14 @@ class _ReadAlarmAppState extends State<ReadAlarmApp>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.state.pendingAlarm.addListener(_showPendingAlarm);
+    widget.state.reader.addListener(_onReaderChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _showPendingAlarm());
   }
 
   @override
   void dispose() {
     widget.state.pendingAlarm.removeListener(_showPendingAlarm);
+    widget.state.reader.removeListener(_onReaderChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -51,6 +54,22 @@ class _ReadAlarmAppState extends State<ReadAlarmApp>
           .reloadFromStorage()
           .whenComplete(widget.state.refreshPermissions);
     }
+  }
+
+  CompletedSession? _limitShownFor;
+
+  /// A free session that used up today's reading gets the paywall, which
+  /// explains the midnight reset — wherever in the app the user is.
+  void _onReaderChanged() {
+    final done = widget.state.reader.lastCompleted;
+    final navigator = _navigatorKey.currentState;
+    if (done == null || done.reason != 'limit' || navigator == null) return;
+    if (identical(done, _limitShownFor)) return;
+    _limitShownFor = done;
+    // After the player has moved on to the session summary.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PaywallScreen.open(navigator.context, reason: PaywallReason.dailyLimit);
+    });
   }
 
   /// Opens the reminder (or the session, for "Start reading" on the

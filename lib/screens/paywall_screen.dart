@@ -3,18 +3,29 @@ import '../state/app_state.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common.dart';
 
+/// Why the paywall was shown.
+enum PaywallReason { upgrade, dailyLimit }
+
 /// Premium paywall (PAY-1, PAY-3). Dismissible.
 ///
-/// Production: load the RevenueCat offering (Purchases.getOfferings) and use
-/// each package's storeProduct.priceString; or swap this screen for
-/// purchases_ui_flutter's RevenueCatUI.presentPaywall().
+/// Billing isn't connected yet, so purchasing doesn't unlock Premium; it
+/// says Premium is coming soon. To connect it: load the RevenueCat offering
+/// (Purchases.getOfferings), use each package's storeProduct.priceString,
+/// and purchase with Purchases.purchasePackage.
 class PaywallScreen extends StatefulWidget {
-  const PaywallScreen({super.key});
+  const PaywallScreen({super.key, this.reason = PaywallReason.upgrade});
 
-  static Future<void> open(BuildContext context) {
+  final PaywallReason reason;
+
+  static Future<void> open(
+    BuildContext context, {
+    PaywallReason reason = PaywallReason.upgrade,
+  }) {
     return Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
-          fullscreenDialog: true, builder: (_) => const PaywallScreen()),
+        fullscreenDialog: true,
+        builder: (_) => PaywallScreen(reason: reason),
+      ),
     );
   }
 
@@ -30,12 +41,13 @@ class _Plan {
 class _PaywallScreenState extends State<PaywallScreen> {
   // PLACEHOLDER prices — replace with RevenueCat priceString values.
   static const _plans = [
-    _Plan('yearly', 'Yearly', '₦12,000 / year', '7-day free trial, best value'),
+    _Plan('yearly', 'Yearly', '₦12,000 / year', 'Best value'),
     _Plan('monthly', 'Monthly', '₦1,500 / month', 'Cancel anytime'),
     _Plan('lifetime', 'Lifetime', '₦25,000 once', 'Pay once, keep forever'),
   ];
 
   static const _benefits = [
+    (Icons.all_inclusive_rounded, 'Unlimited reading every day'),
     (Icons.block_rounded, 'No ads, anywhere in the app'),
     (Icons.library_books_rounded, 'Unlimited books'),
     (Icons.alarm_add_rounded, 'Unlimited alarms'),
@@ -45,15 +57,12 @@ class _PaywallScreenState extends State<PaywallScreen> {
   ];
 
   String _selected = 'yearly';
-  bool _busy = false;
 
-  Future<void> _purchase() async {
-    setState(() => _busy = true);
-    // TODO: Purchases.purchasePackage(package) → check entitlement 'pro'.
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
-    AppScope.of(context).setPremium(true);
-    Navigator.pop(context);
+  /// Billing isn't connected yet: no plan can be bought, so the free tier
+  /// can be tested as it is.
+  void _purchase() {
+    showSnack(
+        context, 'Premium isn\'t available yet. Purchases are coming soon.');
   }
 
   Future<void> _restore() async {
@@ -63,7 +72,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cta = _selected == 'yearly' ? 'Start 7-day free trial' : 'Continue';
+    const cta = 'Continue';
 
     return Scaffold(
       body: Column(
@@ -111,6 +120,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
               children: [
+                if (widget.reason == PaywallReason.dailyLimit)
+                  const _DailyLimitNotice(),
                 // Plans first so every option is visible without scrolling.
                 for (final p in _plans)
                   Padding(
@@ -155,8 +166,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
               child: Column(
                 children: [
                   PrimaryButton(
-                    label: _busy ? 'Processing…' : cta,
-                    onPressed: _busy ? null : _purchase,
+                    label: cta,
+                    onPressed: _purchase,
                   ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -240,6 +251,59 @@ class _PlanTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Explains the free daily reading limit and when it resets.
+class _DailyLimitNotice extends StatelessWidget {
+  const _DailyLimitNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final wait = state.untilFreeReset;
+    final hours = wait.inHours;
+    final minutes = wait.inMinutes.remainder(60);
+    final waitText = hours > 0 ? '$hours h $minutes min' : '$minutes min';
+    final free = AppState.freeDailyReading.inMinutes;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.peach,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.peachBorder),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.hourglass_bottom_rounded, color: AppColors.orange),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'You\'ve used today\'s $free free minutes',
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Free reading resets at midnight, in $waitText. '
+                  'Wait until then, or upgrade to Premium to keep reading '
+                  'now.',
+                  style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.35,
+                      color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

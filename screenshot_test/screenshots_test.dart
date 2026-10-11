@@ -102,8 +102,6 @@ void main() {
     await _shot(tester, '10_onboarding_first_book_added');
 
     await tapText(tester, 'Finish setup');
-    await _shot(tester, '11_paywall');
-    await tapText(tester, 'Continue with ads');
     await _shot(tester, '12_home_first_run');
 
     await _finish(tester, state);
@@ -148,6 +146,15 @@ void main() {
     await tester.tap(find.byTooltip('Add book'));
     await tester.pumpAndSettle();
     await _shot(tester, '22_free_book_limit');
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+
+    // Use up today's free reading: most of it already gone.
+    state.countFreeReading(const Duration(minutes: 14, seconds: 50));
+    await tapText(tester, 'Atomic Habits');
+    await tapText(tester, 'Continue reading');
+    await tester.pump(const Duration(seconds: 12));
+    await _shot(tester, '11_paywall_daily_limit');
 
     await _finish(tester, state);
   });

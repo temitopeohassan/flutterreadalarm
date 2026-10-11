@@ -85,14 +85,15 @@ class ForegroundPlaybackService implements PlaybackService {
   }) async {
     if (defaultTargetPlatform != TargetPlatform.android) return;
     try {
+      final ServiceRequestResult result;
       if (await FlutterForegroundTask.isRunningService) {
-        await FlutterForegroundTask.updateService(
+        result = await FlutterForegroundTask.updateService(
           notificationTitle: title,
           notificationText: text,
           notificationButtons: _buttons(playing),
         );
       } else {
-        await FlutterForegroundTask.startService(
+        result = await FlutterForegroundTask.startService(
           serviceId: 4201,
           serviceTypes: [ForegroundServiceTypes.mediaPlayback],
           notificationTitle: title,
@@ -102,6 +103,11 @@ class ForegroundPlaybackService implements PlaybackService {
           notificationButtons: _buttons(playing),
           callback: _startPlaybackTask,
         );
+      }
+      // Failures are returned, not thrown. Without the service (and its
+      // wake lock) Android may pause reading once the screen locks.
+      if (result case ServiceRequestFailure(:final error)) {
+        debugPrint('Playback service failed to start: $error');
       }
     } catch (e) {
       // Reading still works in the foreground without the service.
