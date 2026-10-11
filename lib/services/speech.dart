@@ -60,7 +60,11 @@ class VoiceOption {
   };
 }
 
-/// Reads text aloud, one utterance at a time.
+/// Reads text aloud from a queue of utterances.
+///
+/// The book is handed to the engine several minutes ahead, so it keeps
+/// reading even when Android pauses the app with the screen locked; the app
+/// tops the queue up whenever it runs.
 abstract class SpeechEngine {
   Future<void> init();
 
@@ -74,34 +78,60 @@ abstract class SpeechEngine {
     VoiceOption? voice,
   });
 
-  /// Completes with true once [text] has been spoken, or false if it was
-  /// interrupted by [stop] or failed.
-  Future<bool> speak(String text);
+  /// Called once for each queued text that finishes, in order.
+  set onDone(void Function()? callback);
 
+  /// Called when the engine fails; the queue is then empty.
+  set onError(void Function()? callback);
+
+  /// Replaces whatever is playing or queued with [texts].
+  Future<void> play(List<String> texts);
+
+  /// Adds [texts] after whatever is queued.
+  Future<void> enqueue(List<String> texts);
+
+  /// Stops speaking and empties the queue.
   Future<void> stop();
 }
 
 class TtsSpeechEngine implements SpeechEngine {
   final _tts = FlutterTts();
-  Completer<bool>? _utterance;
+
+  /// Texts handed to the engine and not finished yet.
+  int _queued = 0;
+
+  /// Whether the current queue has started. Until it has, a completion
+  /// event can only belong to an utterance from before the last [stop],
+  /// delivered late, and is ignored.
+  bool _started = false;
+
+  void Function()? _onDone;
+  void Function()? _onError;
+
+  @override
+  set onDone(void Function()? callback) => _onDone = callback;
+
+  @override
+  set onError(void Function()? callback) => _onError = callback;
 
   @override
   Future<void> init() async {
     await _tts.awaitSpeakCompletion(false);
     if (defaultTargetPlatform == TargetPlatform.android) {
-      await _tts.setQueueMode(0); // Flush: a new utterance replaces the old.
+      await _tts.setQueueMode(1); // Add: utterances play one after another.
     }
-    _tts.setCompletionHandler(() => _finish(true));
-    _tts.setCancelHandler(() => _finish(false));
-    _tts.setErrorHandler((_) => _finish(false));
-  }
-
-  void _finish(bool completed) {
-    final utterance = _utterance;
-    _utterance = null;
-    if (utterance != null && !utterance.isCompleted) {
-      utterance.complete(completed);
-    }
+    _tts.setStartHandler(() => _started = true);
+    _tts.setCompletionHandler(() {
+      if (!_started || _queued == 0) return;
+      _queued--;
+      _onDone?.call();
+    });
+    // Cancels are always ours (stop()); our own state already reflects them.
+    _tts.setCancelHandler(() {});
+    _tts.setErrorHandler((_) {
+      _queued = 0;
+      _onError?.call();
+    });
   }
 
   @override
@@ -141,17 +171,29 @@ class TtsSpeechEngine implements SpeechEngine {
   }
 
   @override
-  Future<bool> speak(String text) async {
-    _finish(false);
-    final utterance = _utterance = Completer<bool>();
-    final result = await _tts.speak(text);
-    if (result != 1) _finish(false);
-    return utterance.future;
+  Future<void> play(List<String> texts) async {
+    await stop();
+    await enqueue(texts);
+  }
+
+  @override
+  Future<void> enqueue(List<String> texts) async {
+    for (final text in texts) {
+      // focus: hold audio focus, as media playback does.
+      final result = await _tts.speak(text, focus: true);
+      if (result == 1) {
+        _queued++;
+      } else {
+        _onError?.call();
+        return;
+      }
+    }
   }
 
   @override
   Future<void> stop() async {
+    _queued = 0;
+    _started = false;
     await _tts.stop();
-    _finish(false);
   }
 }

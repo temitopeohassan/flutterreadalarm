@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/services/playback_service.dart';
+import 'package:readalarm/state/app_state.dart';
 
 import 'support/fakes.dart';
 
@@ -8,11 +9,14 @@ void main() {
       (tester) async {
     final (state, fakes) = await demoState();
     final book = state.books.first; // position 420
-    expect(await state.reader.start(book), isTrue);
+    expect(await state.reader.start(book), ReadingStart.started);
     await tester.pump();
 
     expect(state.reader.playing, isTrue);
     expect(fakes.speech.spoken.single, demoText().sentences[420]);
+    // The engine already holds the next sentences, so reading carries on
+    // even if the app is paused with the screen locked.
+    expect(fakes.speech.queued, ReadingController.queueAhead - 1);
     expect(fakes.playback.visible, isTrue);
 
     // Each demo sentence takes about a second to "speak".
@@ -126,6 +130,70 @@ void main() {
     expect(fakes.speech.pitch, 1.3);
     expect(fakes.speech.voice, FakeSpeech.voiceList.first);
 
+    await state.reader.finish('stop');
+    state.dispose();
+  });
+
+  testWidgets('free users read 15 minutes a day, then the session stops',
+      (tester) async {
+    final (state, fakes) = await demoState();
+    final book = state.books.first;
+    state.updatePosition(book.id, 0); // Enough text for 15+ minutes.
+    expect(state.freeReadingLeft, AppState.freeDailyReading);
+
+    await state.reader.start(state.bookById(book.id));
+    await tester.pump(const Duration(minutes: 10));
+    expect(state.freeReadingLeft!.inMinutes, 5);
+    expect(
+        fakes.speech.spoken.length, greaterThan(ReadingController.queueAhead),
+        reason: 'the queue is topped up as reading goes on');
+
+    await tester.pump(const Duration(minutes: 5, seconds: 2));
+    expect(state.reader.active, isFalse);
+    expect(state.reader.lastCompleted!.reason, 'limit');
+    expect(state.freeReadingLeft, Duration.zero);
+    expect(fakes.playback.visible, isFalse);
+
+    // No more reading today, for any book.
+    expect(await state.reader.start(state.books[1]), ReadingStart.dailyLimit);
+    state.dispose();
+  });
+
+  testWidgets('the free allowance survives a restart the same day',
+      (tester) async {
+    final (state, fakes) = await demoState();
+    await state.reader.start(state.books.first);
+    await tester.pump(const Duration(minutes: 4));
+    await state.reader.finish('stop');
+    await tester.pump();
+    state.dispose();
+
+    final restored = await AppState.load(fakes.services);
+    expect(restored.freeReadingLeft!.inMinutes, 11);
+    restored.dispose();
+  });
+
+  testWidgets('pausing stops the free clock', (tester) async {
+    final (state, _) = await demoState();
+    await state.reader.start(state.books.first);
+    await tester.pump(const Duration(minutes: 2));
+    await state.reader.pause();
+    await tester.pump(const Duration(minutes: 30));
+    expect(state.freeReadingLeft!.inMinutes, 13);
+    await state.reader.finish('stop');
+    state.dispose();
+  });
+
+  testWidgets('Premium has no daily limit', (tester) async {
+    final (state, _) = await demoState(premium: true);
+    final book = state.books.first;
+    state.updatePosition(book.id, 0);
+    expect(state.freeReadingLeft, isNull);
+    await state.reader.start(state.bookById(book.id));
+    await tester.pump(const Duration(minutes: 10));
+    await state.reader.skip(-500); // The demo book is ~15 minutes long.
+    await tester.pump(const Duration(minutes: 6));
+    expect(state.reader.active, isTrue, reason: 'past the free 15 minutes');
     await state.reader.finish('stop');
     state.dispose();
   });

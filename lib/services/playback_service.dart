@@ -11,6 +11,10 @@ abstract class PlaybackService {
     required bool playing,
   });
   Future<void> hide();
+
+  /// Why the background service isn't running while reading, or null if
+  /// it is. Without it Android may stop reading once the screen locks.
+  ValueListenable<String?> get problem;
 }
 
 /// Commands sent from the notification buttons.
@@ -42,6 +46,9 @@ class _PlaybackTaskHandler extends TaskHandler {
 
 class ForegroundPlaybackService implements PlaybackService {
   void Function(String command)? _onCommand;
+
+  @override
+  final ValueNotifier<String?> problem = ValueNotifier(null);
 
   @override
   Future<void> init(void Function(String command) onCommand) async {
@@ -85,14 +92,15 @@ class ForegroundPlaybackService implements PlaybackService {
   }) async {
     if (defaultTargetPlatform != TargetPlatform.android) return;
     try {
+      final ServiceRequestResult result;
       if (await FlutterForegroundTask.isRunningService) {
-        await FlutterForegroundTask.updateService(
+        result = await FlutterForegroundTask.updateService(
           notificationTitle: title,
           notificationText: text,
           notificationButtons: _buttons(playing),
         );
       } else {
-        await FlutterForegroundTask.startService(
+        result = await FlutterForegroundTask.startService(
           serviceId: 4201,
           serviceTypes: [ForegroundServiceTypes.mediaPlayback],
           notificationTitle: title,
@@ -103,7 +111,16 @@ class ForegroundPlaybackService implements PlaybackService {
           callback: _startPlaybackTask,
         );
       }
+      // Failures are returned, not thrown. Without the service (and its
+      // wake lock) Android may pause reading once the screen locks.
+      if (result case ServiceRequestFailure(:final error)) {
+        debugPrint('Playback service failed to start: $error');
+        problem.value = '$error';
+      } else {
+        problem.value = null;
+      }
     } catch (e) {
+      problem.value = '$e';
       // Reading still works in the foreground without the service.
       debugPrint('Playback service unavailable: $e');
     }

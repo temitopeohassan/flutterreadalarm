@@ -7,6 +7,8 @@ import '../widgets/book_cover.dart';
 import '../widgets/common.dart';
 import '../widgets/import_sheet.dart';
 import '../widgets/navy_header.dart';
+import '../theme/app_theme.dart';
+import 'home_screen.dart';
 import 'now_playing_screen.dart';
 import 'paywall_screen.dart';
 
@@ -21,6 +23,27 @@ class LibraryScreen extends StatelessWidget {
       return;
     }
     await ImportSheet.show(context);
+  }
+
+  /// Tapping a book asks whether to read it now or set an alarm for it.
+  Future<void> _chooseAction(BuildContext context, BookInfo book) async {
+    final choice = await showModalBottomSheet<_BookAction>(
+      context: context,
+      backgroundColor: AppColors.cream,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _BookActionSheet(book: book),
+    );
+    if (!context.mounted) return;
+    switch (choice) {
+      case _BookAction.read:
+        await NowPlayingScreen.open(context, book);
+      case _BookAction.alarm:
+        await HomeScreen.openEditor(context, book: book);
+      case null:
+        break;
+    }
   }
 
   Future<void> _rename(BuildContext context, BookInfo book) async {
@@ -127,7 +150,9 @@ class LibraryScreen extends StatelessWidget {
                       final book = books[i];
                       return _BookRow(
                         book: book,
-                        onTap: () => NowPlayingScreen.open(context, book),
+                        onTap: () => _chooseAction(context, book),
+                        onSetAlarm: () =>
+                            HomeScreen.openEditor(context, book: book),
                         onRename: () => _rename(context, book),
                         onDelete: () => _delete(context, book),
                       );
@@ -145,12 +170,14 @@ class _BookRow extends StatelessWidget {
   const _BookRow({
     required this.book,
     required this.onTap,
+    required this.onSetAlarm,
     required this.onRename,
     required this.onDelete,
   });
 
   final BookInfo book;
   final VoidCallback onTap;
+  final VoidCallback onSetAlarm;
   final VoidCallback onRename;
   final VoidCallback onDelete;
 
@@ -198,13 +225,109 @@ class _BookRow extends StatelessWidget {
             tooltip: 'Book options',
             icon:
                 const Icon(Icons.more_vert_rounded, color: AppColors.textMuted),
-            onSelected: (v) => v == 'rename' ? onRename() : onDelete(),
+            onSelected: (v) => switch (v) {
+              'alarm' => onSetAlarm(),
+              'rename' => onRename(),
+              _ => onDelete(),
+            },
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'alarm', child: Text('Set an alarm')),
               PopupMenuItem(value: 'rename', child: Text('Rename')),
               PopupMenuItem(value: 'delete', child: Text('Delete')),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+enum _BookAction { read, alarm }
+
+class _BookActionSheet extends StatelessWidget {
+  const _BookActionSheet({required this.book});
+  final BookInfo book;
+
+  @override
+  Widget build(BuildContext context) {
+    final started = book.position > 0 && !book.isFinished;
+    final where = [
+      '${(book.progress * 100).round()}% read',
+      if (book.chapter.isNotEmpty) book.chapter,
+    ].join('  •  ');
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.switchOff,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                BookCover(book: book, width: 48),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        book.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(where,
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            PrimaryButton(
+              label: started ? 'Continue reading' : 'Start reading',
+              icon: Icons.play_arrow_rounded,
+              onPressed: () => Navigator.pop(context, _BookAction.read),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.pop(context, _BookAction.alarm),
+                icon: const Icon(Icons.alarm_add_rounded),
+                label: const Text('Set an alarm'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.orange,
+                  side: const BorderSide(color: AppColors.orange, width: 1.4),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  textStyle: const TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel',
+                  style: TextStyle(color: AppColors.textSecondary)),
+            ),
+          ],
+        ),
       ),
     );
   }

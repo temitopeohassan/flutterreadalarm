@@ -102,8 +102,6 @@ void main() {
     await _shot(tester, '10_onboarding_first_book_added');
 
     await tapText(tester, 'Finish setup');
-    await _shot(tester, '11_paywall');
-    await tapText(tester, 'Continue with ads');
     await _shot(tester, '12_home_first_run');
 
     await _finish(tester, state);
@@ -116,19 +114,18 @@ void main() {
 
     await tapText(tester, 'Library');
     await _shot(tester, '14_library');
+    await tapText(tester, 'Project Hail Mary');
+    await _shot(tester, '14b_library_book_options');
+    await tapText(tester, 'Cancel');
     await tapText(tester, 'Stats');
     await _shot(tester, '15_stats');
     await tapText(tester, 'Settings');
     await _shot(tester, '16_settings');
     await tapText(tester, 'Home');
 
-    // Free tier already has the maximum number of alarms, so this opens the
-    // paywall; close it and edit an existing alarm instead.
+    // Free users can have 3 alarms; the demo has 2, so this opens the editor.
     await tester.tap(find.bySemanticsLabel('Add alarm'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Close'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('7:00 AM').first);
     await _shot(tester, '17_set_alarm');
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
@@ -149,6 +146,15 @@ void main() {
     await tester.tap(find.byTooltip('Add book'));
     await tester.pumpAndSettle();
     await _shot(tester, '22_free_book_limit');
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+
+    // Use up today's free reading: most of it already gone.
+    state.countFreeReading(const Duration(minutes: 14, seconds: 50));
+    await tapText(tester, 'Atomic Habits');
+    await tapText(tester, 'Continue reading');
+    await tester.pump(const Duration(seconds: 12));
+    await _shot(tester, '11_paywall_daily_limit');
 
     await _finish(tester, state);
   });

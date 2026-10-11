@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../theme/app_colors.dart';
 import '../widgets/book_cover.dart';
 import '../widgets/common.dart';
+import 'paywall_screen.dart';
 import 'session_complete_screen.dart';
 
 /// Screen — Now playing: the reading session player (TTS-2..5, PRG-1, SVC-2).
@@ -26,10 +27,18 @@ class NowPlayingScreen extends StatefulWidget {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final started = await state.reader.start(book, durationMin: durationMin);
-    if (!started) {
-      messenger.showSnackBar(const SnackBar(
-          content: Text('This book\'s text is missing. Import it again.')));
-      return;
+    switch (started) {
+      case ReadingStart.started:
+        break;
+      case ReadingStart.missingText:
+        messenger.showSnackBar(const SnackBar(
+            content: Text('This book\'s text is missing. Import it again.')));
+        return;
+      case ReadingStart.dailyLimit:
+        if (context.mounted) {
+          await PaywallScreen.open(context, reason: PaywallReason.dailyLimit);
+        }
+        return;
     }
     final route =
         MaterialPageRoute<void>(builder: (_) => const NowPlayingScreen());
@@ -231,6 +240,35 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                   ),
               ],
             ),
+            ValueListenableBuilder<String?>(
+              valueListenable: state.services.playback.problem,
+              builder: (context, problem, _) => problem == null
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(
+                        'Background reading couldn\'t start, so reading may '
+                        'stop when the screen locks. ($problem)',
+                        style: const TextStyle(
+                            fontSize: 13, color: AppColors.orangeDark),
+                      ),
+                    ),
+            ),
+            if (state.freeReadingLeft case final left?)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.hourglass_bottom_rounded,
+                        size: 18, color: AppColors.textSecondary),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Free reading left today: ${formatClock(left)}',
+                      style: const TextStyle(color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 12),
             Row(
               children: [

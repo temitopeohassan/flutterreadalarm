@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/main.dart';
+import 'package:readalarm/models/reading_alarm.dart';
 import 'package:readalarm/screens/main_shell.dart';
 import 'package:readalarm/services/alarm_scheduler.dart';
 import 'package:readalarm/services/book_importer.dart';
@@ -30,7 +31,7 @@ void main() {
     state.dispose();
   }
 
-  testWidgets('onboarding: permissions, first book, test alarm, paywall',
+  testWidgets('onboarding: permissions, first book, test alarm, no paywall',
       (tester) async {
     final (state, fakes) =
         await demoState(onboardingDone: false, emptyLibrary: true);
@@ -63,9 +64,9 @@ void main() {
     expect(find.text('Test alarm scheduled'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5)); // Let the snackbar go.
 
+    // No paywall or free trial at the end of onboarding.
     await tapText(tester, 'Finish setup');
-    expect(find.text('ReadAlarm Premium'), findsOneWidget);
-    await tapText(tester, 'Continue with ads');
+    expect(find.text('ReadAlarm Premium'), findsNothing);
 
     expect(state.onboardingDone, isTrue);
     expect(find.byType(MainShell), findsOneWidget);
@@ -110,6 +111,9 @@ void main() {
     await tester.pumpWidget(ReadAlarmApp(state: state));
     await tapText(tester, 'Library');
     await tapText(tester, 'Atomic Habits');
+    // Tapping a book offers reading or an alarm; it's 18% in.
+    expect(find.text('Set an alarm'), findsOneWidget);
+    await tapText(tester, 'Continue reading');
 
     expect(find.text('Reading now'), findsOneWidget);
     expect(fakes.speech.spoken, isNotEmpty);
@@ -205,7 +209,10 @@ void main() {
     await tester.tap(find.text('Go ad-free').first);
     await tester.pumpAndSettle();
 
-    for (final plan in ['Yearly', 'Monthly', 'Lifetime']) {
+    // Only monthly and yearly plans: no lifetime option.
+    expect(find.text('Lifetime'), findsNothing);
+    expect(find.textContaining('once'), findsNothing);
+    for (final plan in ['Yearly', 'Monthly']) {
       final rect = tester.getRect(find.text(plan));
       expect(rect.bottom, lessThan(tester.view.physicalSize.height / 3),
           reason: '$plan should be on screen');
@@ -230,6 +237,155 @@ void main() {
 
     await tapText(tester, 'Run 1-minute test alarm');
     expect(fakes.alarms.once, hasLength(1));
+    await close(tester, state);
+  });
+
+  testWidgets('a library book can start an alarm for itself', (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tapText(tester, 'Library');
+    await tapText(tester, 'Project Hail Mary');
+    await tapText(tester, 'Set an alarm');
+
+    // Free users can add a third alarm; the editor has the book chosen.
+    expect(find.text('Set new alarm'), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byType(DropdownButton<BookInfo>),
+            matching: find.text('Project Hail Mary')),
+        findsWidgets);
+    await tapText(tester, 'Save alarm');
+
+    final added = state.alarms.last;
+    expect(state.alarms, hasLength(3));
+    expect(added.book.id, 'b3');
+    expect(fakes.alarms.scheduled.containsKey(added.id), isTrue);
+
+    // A fourth alarm needs Premium.
+    await tapText(tester, 'Library');
+    await tester.tap(find.byTooltip('Book options').first);
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Set an alarm');
+    expect(find.text('ReadAlarm Premium'), findsOneWidget);
+    await close(tester, state);
+  });
+
+  testWidgets('the editor refuses a second alarm for the same moment',
+      (tester) async {
+    final (state, _) = await demoState(premium: true);
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+
+    // 7:00 Mon/Wed/Fri is taken, so a new alarm starts at 7:30.
+    await tester.tap(find.bySemanticsLabel('Add alarm'));
+    await tester.pumpAndSettle();
+    expect(find.text('07'), findsOneWidget);
+    expect(find.text('30'), findsWidgets); // minutes (and the 30-min slider)
+
+    for (var i = 0; i < 30; i++) {
+      await tester.tap(find.byTooltip('Earlier minute'));
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('00'), findsOneWidget);
+    final count = state.alarms.length;
+    await tapText(tester, 'Save alarm');
+
+    expect(find.text('An alarm is already set for then'), findsOneWidget);
+    expect(find.textContaining('The Midnight Library'), findsWidgets);
+    await tapText(tester, 'OK');
+    expect(state.alarms, hasLength(count));
+    expect(find.text('Set new alarm'), findsOneWidget, reason: 'still open');
+    await close(tester, state);
+  });
+
+  testWidgets('an alarm without repeat days asks for its date', (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Add alarm'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Date'), findsNothing);
+    for (final day in ['Monday', 'Wednesday', 'Friday']) {
+      await tester.tap(find.bySemanticsLabel(RegExp('^$day')));
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('Date'), findsOneWidget);
+    expect(find.textContaining(RegExp('^(Today|Tomorrow), ')), findsOneWidget);
+
+    await tapText(tester, 'Save alarm');
+    final added = state.alarms.last;
+    expect(added.isOneOff, isTrue);
+    expect(added.date, isNotNull);
+    expect(added.onceAt!.isAfter(DateTime.now()), isTrue);
+    expect(fakes.alarms.scheduled.containsKey(added.id), isTrue);
+    expect(find.textContaining('Once · '), findsOneWidget);
+    await close(tester, state);
+  });
+
+  testWidgets('using up the free minutes shows when reading resets',
+      (tester) async {
+    final (state, _) = await demoState();
+    state.updatePosition('b2', 0);
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tapText(tester, 'Library');
+    await tapText(tester, 'Atomic Habits');
+    await tapText(tester, 'Start reading');
+    expect(
+        find.textContaining('Free reading left today: 15:00'), findsOneWidget);
+
+    await tester.pump(const Duration(minutes: 15, seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.text('You\'ve used today\'s 15 free minutes'), findsOneWidget);
+    expect(find.textContaining('resets at midnight'), findsOneWidget);
+
+    // Billing isn't connected: buying doesn't unlock Premium.
+    await tapText(tester, 'Continue');
+    expect(find.textContaining('isn\'t available yet'), findsOneWidget);
+    expect(state.isPremium, isFalse);
+
+    // Closing it shows the session summary; reading again is refused.
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('Session complete'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5)); // Let the message go.
+    await tapText(tester, 'Done');
+    await tapText(tester, 'Library');
+    await tapText(tester, 'Atomic Habits');
+    await tapText(tester, 'Continue reading');
+    expect(find.text('You\'ve used today\'s 15 free minutes'), findsOneWidget);
+    expect(state.reader.active, isFalse);
+    await close(tester, state);
+  });
+
+  testWidgets('Settings only offers switching Premium off', (tester) async {
+    final (state, _) = await demoState(premium: true);
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tapText(tester, 'Settings');
+    await tapText(tester, 'Test mode: Premium');
+    expect(state.isPremium, isFalse);
+    expect(find.text('Test mode: Premium'), findsNothing);
+    await close(tester, state);
+  });
+
+  testWidgets('returning to the app picks up another instance\'s changes',
+      (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tapText(tester, 'Library');
+
+    // Another copy of the app (started by an alarm) read on.
+    final other = await AppState.load(fakes.services);
+    other.updatePosition('b2', 500);
+    await tester.pump();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('50%'), findsOneWidget);
+
+    other.dispose();
     await close(tester, state);
   });
 }

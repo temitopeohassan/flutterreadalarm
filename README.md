@@ -9,8 +9,10 @@ Repo for the ReadAlarm Mobile App
   explanation.
 - **Reading aloud:** the phone's text-to-speech engine reads sentence by
   sentence, with pause/resume, skip, speed, and (Premium) voice and pitch.
-  A foreground service keeps reading with the screen locked and puts
-  Pause/Stop on the lock screen. Your place is saved as you go.
+  Sentences are queued with the speech engine minutes ahead and a
+  foreground service holds a wake lock, so reading continues with the
+  screen locked; Pause/Stop sit on the lock screen. Your place is saved as
+  you go.
 - **Alarms:** exact alarms per weekday or one-off. They ring over the lock
   screen, keep ringing until answered, survive reboots, and offer Start
   reading or Snooze 10 min. Alarm sessions stop after 15/30/60 minutes.
@@ -20,9 +22,13 @@ Repo for the ReadAlarm Mobile App
 - **Stats:** minutes read per day, weekly total and streak from your
   sessions. Everything is saved on the device.
 
-**Simulated for now:** billing (the paywall's purchase just unlocks Premium
-locally) and ads (the banner is a placeholder; the rewarded ad unlocks
-60-minute sessions without showing one).
+**Free tier:** 3 books, 3 alarms, and 15 minutes of reading a day (reset
+at local midnight). When the minutes run out, the paywall explains when
+reading resets.
+
+**Not connected yet:** billing and ads. Paywall purchases show "coming
+soon" and don't unlock Premium; the banner ad is a placeholder; the rewarded
+ad unlocks 60-minute alarm sessions without showing one.
 
 ## Development
 

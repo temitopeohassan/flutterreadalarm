@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/ads_service.dart';
 import '../services/speech.dart';
@@ -203,11 +202,17 @@ class SettingsScreen extends StatelessWidget {
                           applicationVersion: '0.1.0',
                         ),
                       ),
-                      if (kDebugMode)
+                      // Older builds' paywall switched Premium on without a
+                      // purchase. Shown only while Premium is on, so it can
+                      // be switched off but not on. Remove with billing.
+                      if (state.isPremium)
                         SwitchListTile(
-                          secondary: const Icon(Icons.bug_report_outlined,
+                          secondary: const Icon(Icons.science_outlined,
                               color: AppColors.navy),
-                          title: const Text('Debug: simulate Premium'),
+                          title: const Text('Test mode: Premium'),
+                          subtitle: const Text(
+                              'Billing isn\'t connected yet. Turn off to use '
+                              'the free tier (it can\'t be turned back on).'),
                           value: state.isPremium,
                           activeTrackColor: AppColors.orange,
                           onChanged: state.setPremium,

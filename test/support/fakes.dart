@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import 'package:readalarm/models/reading_alarm.dart';
 import 'package:readalarm/services/alarm_scheduler.dart';
@@ -15,13 +16,18 @@ import 'package:readalarm/state/app_state.dart';
 
 import 'sample_files.dart';
 
-/// "Speaks" each utterance for 100 ms per word.
+/// "Speaks" each queued utterance for 100 ms per word.
 class FakeSpeech implements SpeechEngine {
+  /// Every utterance started, in order.
   final spoken = <String>[];
-  Completer<bool>? _current;
+  final _queue = <String>[];
   Timer? _timer;
+  void Function()? _onDone;
   double speed = 1, pitch = 1;
   VoiceOption? voice;
+
+  /// Utterances waiting after the current one.
+  int get queued => _queue.length;
 
   static const voiceList = [
     VoiceOption(name: 'en-gb-x-rjs-local', locale: 'en-GB'),
@@ -47,24 +53,42 @@ class FakeSpeech implements SpeechEngine {
   }
 
   @override
-  Future<bool> speak(String text) {
-    _end(false);
-    spoken.add(text);
-    final done = _current = Completer<bool>();
-    final words = text.split(' ').length;
-    _timer = Timer(Duration(milliseconds: 100 * words), () => _end(true));
-    return done.future;
-  }
+  set onDone(void Function()? callback) => _onDone = callback;
 
-  void _end(bool completed) {
-    _timer?.cancel();
-    final current = _current;
-    _current = null;
-    if (current != null && !current.isCompleted) current.complete(completed);
+  @override
+  set onError(void Function()? callback) {}
+
+  @override
+  Future<void> play(List<String> texts) async {
+    await stop();
+    await enqueue(texts);
   }
 
   @override
-  Future<void> stop() async => _end(false);
+  Future<void> enqueue(List<String> texts) async {
+    _queue.addAll(texts);
+    if (_timer == null) _next();
+  }
+
+  void _next() {
+    if (_queue.isEmpty) return;
+    final text = _queue.removeAt(0);
+    spoken.add(text);
+    final words = text.split(' ').length;
+    _timer = Timer(Duration(milliseconds: 100 * words), () {
+      _timer = null;
+      final done = _onDone;
+      _next();
+      done?.call();
+    });
+  }
+
+  @override
+  Future<void> stop() async {
+    _timer?.cancel();
+    _timer = null;
+    _queue.clear();
+  }
 }
 
 class FakeAlarms implements AlarmScheduler {
@@ -130,6 +154,9 @@ class FakePermissions implements PermissionService {
 
 class FakePlayback implements PlaybackService {
   void Function(String)? onCommand;
+
+  @override
+  final ValueNotifier<String?> problem = ValueNotifier(null);
   bool visible = false;
   String text = '';
 
@@ -183,6 +210,11 @@ class FakeImporter implements BookImporter {
 }
 
 class FakeServices {
+  FakeServices({this.speechOverride});
+
+  /// Used instead of [speech], e.g. the real engine on a fake platform.
+  final SpeechEngine? speechOverride;
+
   final storage = MemoryAppStorage();
   final speech = FakeSpeech();
   final alarms = FakeAlarms();
@@ -192,7 +224,7 @@ class FakeServices {
 
   AppServices get services => AppServices(
         storage: storage,
-        speech: speech,
+        speech: speechOverride ?? speech,
         alarms: alarms,
         permissions: permissions,
         playback: playback,
@@ -222,8 +254,9 @@ Future<(AppState, FakeServices)> demoState({
   bool onboardingDone = true,
   bool premium = false,
   bool emptyLibrary = false,
+  SpeechEngine? speech,
 }) async {
-  final fakes = FakeServices();
+  final fakes = FakeServices(speechOverride: speech);
   if (!emptyLibrary) {
     final seed = AppState(
       services: fakes.services,
