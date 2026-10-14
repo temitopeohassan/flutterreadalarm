@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/ads_service.dart';
 import '../services/speech.dart';
+import '../models/reading_alarm.dart';
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common.dart';
@@ -48,7 +49,7 @@ class SettingsScreen extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
               children: [
-                _PremiumCard(isPremium: state.isPremium),
+                _PremiumCard(state: state),
                 const SizedBox(height: 24),
                 const SectionTitle('Voice'),
                 AppCard(
@@ -202,21 +203,6 @@ class SettingsScreen extends StatelessWidget {
                           applicationVersion: '0.1.0',
                         ),
                       ),
-                      // Older builds' paywall switched Premium on without a
-                      // purchase. Shown only while Premium is on, so it can
-                      // be switched off but not on. Remove with billing.
-                      if (state.isPremium)
-                        SwitchListTile(
-                          secondary: const Icon(Icons.science_outlined,
-                              color: AppColors.navy),
-                          title: const Text('Test mode: Premium'),
-                          subtitle: const Text(
-                              'Billing isn\'t connected yet. Turn off to use '
-                              'the free tier (it can\'t be turned back on).'),
-                          value: state.isPremium,
-                          activeTrackColor: AppColors.orange,
-                          onChanged: state.setPremium,
-                        ),
                     ],
                   ),
                 ),
@@ -230,11 +216,29 @@ class SettingsScreen extends StatelessWidget {
 }
 
 class _PremiumCard extends StatelessWidget {
-  const _PremiumCard({required this.isPremium});
-  final bool isPremium;
+  const _PremiumCard({required this.state});
+  final AppState state;
 
   @override
   Widget build(BuildContext context) {
+    final isPremium = state.isPremium;
+    final trialLeft = state.purchased ? null : state.trialLeft;
+    String title;
+    String subtitle;
+    if (trialLeft != null) {
+      final days = (trialLeft.inHours / 24).ceil();
+      title = 'Free trial: $days ${days == 1 ? 'day' : 'days'} left';
+      subtitle = 'Premium until ${formatDay(state.trialEndsAt!)}, then '
+          'back to the free plan.';
+    } else if (isPremium) {
+      title = 'Premium is active';
+      subtitle = 'No ads. Unlimited books and alarms.';
+    } else {
+      title = 'Go ad-free with Premium';
+      subtitle = state.canStartTrial
+          ? 'Try it free for ${AppState.trialLength.inDays} days.'
+          : 'Unlimited books, 60-min sessions, every voice.';
+    }
     return AppCard(
       color: AppColors.navy,
       onTap: isPremium ? null : () => PaywallScreen.open(context),
@@ -248,7 +252,7 @@ class _PremiumCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isPremium ? 'Premium is active' : 'Go ad-free with Premium',
+                  title,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 17,
@@ -257,9 +261,7 @@ class _PremiumCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  isPremium
-                      ? 'No ads. Unlimited books and alarms.'
-                      : 'Unlimited books, 60-min sessions, every voice.',
+                  subtitle,
                   style:
                       const TextStyle(color: Color(0xFFC9CFE3), fontSize: 13),
                 ),

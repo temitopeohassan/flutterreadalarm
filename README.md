@@ -22,12 +22,17 @@ Repo for the ReadAlarm Mobile App
 - **Stats:** minutes read per day, weekly total and streak from your
   sessions. Everything is saved on the device.
 
-**Free tier:** 3 books, 3 alarms, and 15 minutes of reading a day (reset
+**Free tier:** 3 books, 1 alarm, and 15 minutes of reading a day (reset
 at local midnight). When the minutes run out, the paywall explains when
 reading resets.
 
-**Not connected yet:** billing and ads. Paywall purchases show "coming
-soon" and don't unlock Premium; the banner ad is a placeholder; the rewarded
+**Free trial:** 7 days of Premium, offered at the end of onboarding and on
+the paywall, once per install. When it ends the app returns to the free
+tier and alarms beyond the free one are switched off (the first one added
+stays on). Uninstall and reinstall to try it again.
+
+**Not connected yet:** billing and ads. Buying a plan (after the trial)
+shows "coming soon" and doesn't unlock Premium; the banner ad is a placeholder; the rewarded
 ad unlocks 60-minute alarm sessions without showing one.
 
 ## Development

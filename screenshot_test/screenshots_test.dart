@@ -102,6 +102,8 @@ void main() {
     await _shot(tester, '10_onboarding_first_book_added');
 
     await tapText(tester, 'Finish setup');
+    await _shot(tester, '11_paywall');
+    await tester.tap(find.byTooltip('Close'));
     await _shot(tester, '12_home_first_run');
 
     await _finish(tester, state);
@@ -109,6 +111,8 @@ void main() {
 
   testWidgets('main app', (tester) async {
     final (state, _) = await demoState();
+    // A free user has one alarm.
+    await state.deleteAlarm(state.alarms.last);
     await _launch(tester, state);
     await _shot(tester, '13_home');
 
@@ -123,9 +127,12 @@ void main() {
     await _shot(tester, '16_settings');
     await tapText(tester, 'Home');
 
-    // Free users can have 3 alarms; the demo has 2, so this opens the editor.
+    // Free users have one alarm, so adding another opens the paywall.
     await tester.tap(find.bySemanticsLabel('Add alarm'));
+    await _shot(tester, '17a_alarm_limit_paywall');
+    await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
+    await tapText(tester, 'Read 30 min');
     await _shot(tester, '17_set_alarm');
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();

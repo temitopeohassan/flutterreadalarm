@@ -265,7 +265,7 @@ Future<(AppState, FakeServices)> demoState({
       sessions: SampleData.sessions(),
     )
       ..onboardingDone = onboardingDone
-      ..isPremium = premium;
+      ..purchased = premium;
     for (final book in seed.books) {
       await fakes.storage.saveBookText(book.id, demoText());
     }
@@ -274,7 +274,7 @@ Future<(AppState, FakeServices)> demoState({
   } else {
     final seed = AppState(services: fakes.services)
       ..onboardingDone = onboardingDone
-      ..isPremium = premium;
+      ..purchased = premium;
     await fakes.storage.saveState(seed.toJson());
     seed.dispose();
   }
