@@ -102,8 +102,6 @@ void main() {
     await _shot(tester, '10_onboarding_first_book_added');
 
     await tapText(tester, 'Finish setup');
-    await _shot(tester, '11_paywall');
-    await tester.tap(find.byTooltip('Close'));
     await _shot(tester, '12_home_first_run');
 
     await _finish(tester, state);

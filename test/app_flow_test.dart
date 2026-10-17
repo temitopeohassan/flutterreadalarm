@@ -31,7 +31,7 @@ void main() {
     state.dispose();
   }
 
-  testWidgets('onboarding: permissions, first book, test alarm, trial offer',
+  testWidgets('onboarding: permissions, first book, test alarm, no paywall',
       (tester) async {
     final (state, fakes) =
         await demoState(onboardingDone: false, emptyLibrary: true);
@@ -64,14 +64,9 @@ void main() {
     expect(find.text('Test alarm scheduled'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5)); // Let the snackbar go.
 
-    // The paywall offers the free trial; closing it keeps the free tier.
+    // No paywall or free trial at the end of onboarding.
     await tapText(tester, 'Finish setup');
-    expect(find.text('ReadAlarm Premium'), findsOneWidget);
-    expect(find.text('Start 7-day free trial'), findsOneWidget);
-    await tester.tap(find.byTooltip('Close'));
-    await tester.pumpAndSettle();
-    expect(state.isPremium, isFalse);
-    expect(state.trialUsed, isFalse);
+    expect(find.text('ReadAlarm Premium'), findsNothing);
 
     expect(state.onboardingDone, isTrue);
     expect(find.byType(MainShell), findsOneWidget);
@@ -224,49 +219,33 @@ void main() {
     }
     expect(find.text('₦1,500 / month'), findsOneWidget);
 
-    // Both plans start with the 7-day free trial.
-    expect(find.text('Start 7-day free trial'), findsOneWidget);
-    expect(find.textContaining('then ₦12,000/year'), findsOneWidget);
+    // No free trial on either plan.
+    expect(find.textContaining('trial'), findsNothing);
     await tester.tap(find.text('Monthly'));
     await tester.pumpAndSettle();
-    expect(find.text('Start 7-day free trial'), findsOneWidget);
-    expect(find.textContaining('then ₦1,500/month'), findsOneWidget);
+    expect(find.text('Continue'), findsOneWidget);
+    expect(find.textContaining('trial'), findsNothing);
     await close(tester, state);
   });
 
-  testWidgets('starting the free trial unlocks Premium for 7 days',
-      (tester) async {
+  testWidgets('Premium can\'t be bought or switched on yet', (tester) async {
     final (state, _) = await demoState();
     await tester.pumpWidget(ReadAlarmApp(state: state));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Go ad-free').first);
     await tester.pumpAndSettle();
 
-    await tapText(tester, 'Start 7-day free trial');
-    expect(state.isPremium, isTrue);
-    expect(state.trialActive, isTrue);
-    expect(find.text('ReadAlarm Premium'), findsNothing);
-    expect(find.textContaining('free trial has started'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 5)); // Let the message go.
-
-    await tapText(tester, 'Settings');
-    expect(find.text('Free trial: 7 days left'), findsOneWidget);
-    // No switch to turn Premium off.
-    expect(find.text('Test mode: Premium'), findsNothing);
-    expect(find.byType(SwitchListTile), findsNothing);
-
-    // The trial is offered once: afterwards the paywall can't start it.
-    await tapText(tester, 'Home');
-    state.trialStartedAt = DateTime.now().subtract(const Duration(days: 8));
-    state.setPremium(false); // Notifies.
-    await tester.pumpAndSettle();
-    expect(state.isPremium, isFalse);
-    await tester.tap(find.text('Go ad-free').first);
-    await tester.pumpAndSettle();
-    expect(find.text('Start 7-day free trial'), findsNothing);
     await tapText(tester, 'Continue');
     expect(find.textContaining('isn\'t available yet'), findsOneWidget);
     expect(state.isPremium, isFalse);
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5)); // Let the message go.
+
+    // No switch in Settings to turn Premium on or off.
+    await tapText(tester, 'Settings');
+    expect(find.text('Test mode: Premium'), findsNothing);
+    expect(find.byType(SwitchListTile), findsNothing);
     await close(tester, state);
   });
 
@@ -404,8 +383,10 @@ void main() {
     expect(find.text('You\'ve used today\'s 15 free minutes'), findsOneWidget);
     expect(find.textContaining('resets at midnight'), findsOneWidget);
 
-    // The way on today is the free trial.
-    expect(find.text('Start 7-day free trial'), findsOneWidget);
+    // Billing isn't connected: buying doesn't unlock Premium.
+    await tapText(tester, 'Continue');
+    expect(find.textContaining('isn\'t available yet'), findsOneWidget);
+    expect(state.isPremium, isFalse);
 
     // Closing it shows the session summary; reading again is refused.
     await tester.tap(find.byTooltip('Close'));

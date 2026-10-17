@@ -26,13 +26,11 @@ Repo for the ReadAlarm Mobile App
 at local midnight). When the minutes run out, the paywall explains when
 reading resets.
 
-**Free trial:** 7 days of Premium, offered at the end of onboarding and on
-the paywall, once per install. When it ends the app returns to the free
-tier and alarms beyond the free one are switched off (the first one added
-stays on). Uninstall and reinstall to try it again.
+Only one alarm can be switched on: alarms beyond it (e.g. from an earlier
+version, which allowed 3) are switched off, the first one added staying on.
 
-**Not connected yet:** billing and ads. Buying a plan (after the trial)
-shows "coming soon" and doesn't unlock Premium; the banner ad is a placeholder; the rewarded
+**Not connected yet:** billing and ads. Paywall purchases show "coming
+soon" and don't unlock Premium; the banner ad is a placeholder; the rewarded
 ad unlocks 60-minute alarm sessions without showing one.
 
 ## Development

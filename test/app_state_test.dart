@@ -411,62 +411,26 @@ void main() {
     });
   });
 
-  group('free trial', () {
-    test('gives Premium for 7 days, once, and survives a restart', () async {
-      final start = DateTime(2026, 10, 14, 9);
-      await withClock(Clock.fixed(start), () async {
-        final (state, fakes) = await demoState();
-        expect(state.canStartTrial, isTrue);
-        expect(state.startTrial(), isTrue);
-        expect(state.isPremium, isTrue);
-        expect(state.trialEndsAt, DateTime(2026, 10, 21, 9));
-        expect(state.trialLeft, const Duration(days: 7));
-        expect(state.startTrial(), isFalse, reason: 'once only');
-        await pumpEventQueue();
-        state.dispose();
+  group('free alarms', () {
+    test('without Premium, alarms beyond the free one are switched off',
+        () async {
+      // Set up with Premium (or an earlier version's 3 free alarms).
+      final (state, fakes) = await demoState(premium: true);
+      expect(await state.toggleAlarm(state.alarms.last, true),
+          AlarmSaveStatus.saved);
+      expect(state.alarms.every((a) => a.enabled), isTrue);
+      state.setPremium(false);
+      await pumpEventQueue();
+      state.dispose();
 
-        final restored = await AppState.load(fakes.services);
-        expect(restored.trialActive, isTrue);
-        expect(restored.canAddAlarm, isTrue);
-        restored.dispose();
-      });
-
-      await withClock(Clock.fixed(DateTime(2026, 10, 21, 9)), () async {
-        final (state, _) = await demoState();
-        state.trialStartedAt = start;
-        expect(state.trialActive, isFalse);
-        expect(state.isPremium, isFalse);
-        expect(state.canStartTrial, isFalse);
-        expect(state.trialLeft, isNull);
-        state.dispose();
-      });
-    });
-
-    test('when it ends, alarms beyond the free one are switched off', () async {
-      final start = DateTime(2026, 10, 14, 9);
-      late FakeServices fakes;
-      await withClock(Clock.fixed(start), () async {
-        final (state, f) = await demoState();
-        fakes = f;
-        state.startTrial();
-        expect(await state.toggleAlarm(state.alarms.last, true),
-            AlarmSaveStatus.saved);
-        expect(state.alarms.every((a) => a.enabled), isTrue);
-        await pumpEventQueue();
-        state.dispose();
-      });
-
-      await withClock(Clock.fixed(DateTime(2026, 10, 22)), () async {
-        final state = await AppState.load(fakes.services);
-        expect(state.isPremium, isFalse);
-        expect([for (final a in state.alarms) a.enabled], [true, false]);
-        expect(fakes.alarms.scheduled.keys, ['a1']);
-        // Switching the other back on needs Premium.
-        expect(await state.toggleAlarm(state.alarms.last, true),
-            AlarmSaveStatus.limitReached);
-        expect(state.alarms.last.enabled, isFalse);
-        state.dispose();
-      });
+      final restored = await AppState.load(fakes.services);
+      expect([for (final a in restored.alarms) a.enabled], [true, false]);
+      expect(fakes.alarms.scheduled.keys, ['a1']);
+      // Switching the other back on needs Premium.
+      expect(await restored.toggleAlarm(restored.alarms.last, true),
+          AlarmSaveStatus.limitReached);
+      expect(restored.alarms.last.enabled, isFalse);
+      restored.dispose();
     });
   });
 

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/ads_service.dart';
 import '../services/speech.dart';
-import '../models/reading_alarm.dart';
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common.dart';
@@ -49,7 +48,7 @@ class SettingsScreen extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
               children: [
-                _PremiumCard(state: state),
+                _PremiumCard(isPremium: state.isPremium),
                 const SizedBox(height: 24),
                 const SectionTitle('Voice'),
                 AppCard(
@@ -216,29 +215,11 @@ class SettingsScreen extends StatelessWidget {
 }
 
 class _PremiumCard extends StatelessWidget {
-  const _PremiumCard({required this.state});
-  final AppState state;
+  const _PremiumCard({required this.isPremium});
+  final bool isPremium;
 
   @override
   Widget build(BuildContext context) {
-    final isPremium = state.isPremium;
-    final trialLeft = state.purchased ? null : state.trialLeft;
-    String title;
-    String subtitle;
-    if (trialLeft != null) {
-      final days = (trialLeft.inHours / 24).ceil();
-      title = 'Free trial: $days ${days == 1 ? 'day' : 'days'} left';
-      subtitle = 'Premium until ${formatDay(state.trialEndsAt!)}, then '
-          'back to the free plan.';
-    } else if (isPremium) {
-      title = 'Premium is active';
-      subtitle = 'No ads. Unlimited books and alarms.';
-    } else {
-      title = 'Go ad-free with Premium';
-      subtitle = state.canStartTrial
-          ? 'Try it free for ${AppState.trialLength.inDays} days.'
-          : 'Unlimited books, 60-min sessions, every voice.';
-    }
     return AppCard(
       color: AppColors.navy,
       onTap: isPremium ? null : () => PaywallScreen.open(context),
@@ -252,7 +233,7 @@ class _PremiumCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
+                  isPremium ? 'Premium is active' : 'Go ad-free with Premium',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 17,
@@ -261,7 +242,9 @@ class _PremiumCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  subtitle,
+                  isPremium
+                      ? 'No ads. Unlimited books and alarms.'
+                      : 'Unlimited books, 60-min sessions, every voice.',
                   style:
                       const TextStyle(color: Color(0xFFC9CFE3), fontSize: 13),
                 ),

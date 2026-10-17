@@ -132,7 +132,7 @@ String _freeAlarmNote(int count) {
   const limit = AppState.freeAlarmLimit;
   const noun = limit == 1 ? 'alarm' : 'alarms';
   if (count <= limit) return '$count of $limit free $noun used';
-  // Left from Premium (e.g. a trial that ended): the extras stay off.
+  // Left from an earlier version or Premium: the extras stay off.
   return 'The free plan includes $limit $noun. Upgrade to switch on more.';
 }
 

@@ -15,8 +15,8 @@ import '../services/speech.dart';
 
 /// App state, persisted through [AppServices.storage] after every change.
 ///
-/// Billing (RevenueCat) and ads are simulated: [startTrial], [setPremium]
-/// and [unlockRewarded] stand in for real purchases and rewarded ads.
+/// Billing (RevenueCat) and ads are simulated: [setPremium] and
+/// [unlockRewarded] stand in for real purchases and rewarded ads.
 class AppState extends ChangeNotifier {
   AppState({
     required this.services,
@@ -41,30 +41,8 @@ class AppState extends ChangeNotifier {
   /// Premium bought (simulated: billing isn't connected yet).
   bool purchased = false;
 
-  /// When the free trial was started; null if it never was.
-  DateTime? trialStartedAt;
-
-  /// Length of the free trial, offered once per install.
-  static const trialLength = Duration(days: 7);
-
-  /// Premium features are on: bought, or during the free trial.
-  bool get isPremium => purchased || trialActive;
-
-  bool get trialUsed => trialStartedAt != null;
-
-  DateTime? get trialEndsAt => trialStartedAt?.add(trialLength);
-
-  bool get trialActive {
-    final ends = trialEndsAt;
-    return ends != null && clock.now().isBefore(ends);
-  }
-
-  /// Time left in the free trial; null when it isn't running.
-  Duration? get trialLeft =>
-      trialActive ? trialEndsAt!.difference(clock.now()) : null;
-
-  /// The free trial can be started (it hasn't been, and Premium isn't on).
-  bool get canStartTrial => !trialUsed && !purchased;
+  /// Premium features are on (bought; simulated until billing is wired).
+  bool get isPremium => purchased;
 
   final List<BookInfo> books;
   final List<ReadingAlarm> alarms;
@@ -131,7 +109,6 @@ class AppState extends ChangeNotifier {
         'version': 1,
         'onboardingDone': onboardingDone,
         'isPremium': purchased,
-        'trialStartedAt': trialStartedAt?.toIso8601String(),
         'rewardedUnlockUntil': rewardedUnlockUntil?.toIso8601String(),
         'freeReadDay': _freeReadDay,
         'freeReadSeconds': _freeReadToday.inSeconds,
@@ -147,7 +124,6 @@ class AppState extends ChangeNotifier {
   void _restore(Map<String, Object?> json) {
     onboardingDone = json['onboardingDone'] as bool? ?? false;
     purchased = json['isPremium'] as bool? ?? false;
-    trialStartedAt = DateTime.tryParse(json['trialStartedAt'] as String? ?? '');
     rewardedUnlockUntil =
         DateTime.tryParse(json['rewardedUnlockUntil'] as String? ?? '');
     _freeReadDay = json['freeReadDay'] as String? ?? '';
@@ -287,18 +263,9 @@ class AppState extends ChangeNotifier {
     _changed();
   }
 
-  /// Starts the 7-day free trial: Premium until it ends, then back to the
-  /// free tier. Once per install. False if it was already used.
-  bool startTrial() {
-    if (!canStartTrial) return false;
-    trialStartedAt = clock.now();
-    _changed();
-    return true;
-  }
-
-  /// Alarms that may ring on the free tier: once Premium ends (the trial
-  /// running out), alarms beyond [freeAlarmLimit] are switched off. The
-  /// earliest-added stay on. Returns the alarms switched off.
+  /// Alarms that may ring on the free tier: without Premium (e.g. alarms
+  /// set up by an earlier version, which allowed 3), alarms beyond
+  /// [freeAlarmLimit] are switched off. The earliest-added stay on. Returns the alarms switched off.
   List<ReadingAlarm> _enforceFreeAlarms() {
     if (isPremium) return const [];
     final off = <ReadingAlarm>[];

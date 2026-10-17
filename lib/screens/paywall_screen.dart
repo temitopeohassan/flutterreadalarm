@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../models/reading_alarm.dart';
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common.dart';
@@ -9,12 +8,10 @@ enum PaywallReason { upgrade, dailyLimit }
 
 /// Premium paywall (PAY-1, PAY-3). Dismissible.
 ///
-/// The 7-day free trial works (once per install): Premium until it ends,
-/// then back to the free tier. Billing isn't connected yet, so buying a
-/// plan doesn't unlock Premium; it says Premium is coming soon. To connect
-/// it: load the RevenueCat offering (Purchases.getOfferings), use each
-/// package's storeProduct.priceString and free-trial intro offer, and
-/// purchase with Purchases.purchasePackage.
+/// Billing isn't connected yet, so purchasing doesn't unlock Premium; it
+/// says Premium is coming soon. To connect it: load the RevenueCat offering
+/// (Purchases.getOfferings), use each package's storeProduct.priceString,
+/// and purchase with Purchases.purchasePackage.
 class PaywallScreen extends StatefulWidget {
   const PaywallScreen({super.key, this.reason = PaywallReason.upgrade});
 
@@ -41,8 +38,6 @@ class _Plan {
   final String id, name, price, note;
 }
 
-String _trialDays() => '${AppState.trialLength.inDays}-day';
-
 class _PaywallScreenState extends State<PaywallScreen> {
   // PLACEHOLDER prices — replace with RevenueCat priceString values.
   static const _plans = [
@@ -62,18 +57,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
   String _selected = 'yearly';
 
-  /// Starts the free trial if it hasn't been used. Billing isn't connected
-  /// yet, so otherwise no plan can be bought.
+  /// Billing isn't connected yet: no plan can be bought, so the free tier
+  /// can be tested as it is.
   void _purchase() {
-    final state = AppScope.of(context);
-    if (state.startTrial()) {
-      showSnack(
-          context,
-          'Your ${_trialDays()} free trial has started. Premium until '
-          '${formatDay(state.trialEndsAt!)}.');
-      Navigator.pop(context);
-      return;
-    }
     showSnack(
         context, 'Premium isn\'t available yet. Purchases are coming soon.');
   }
@@ -85,10 +71,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    final trial = state.canStartTrial;
-    final cta = trial ? 'Start ${_trialDays()} free trial' : 'Continue';
-    final plan = _plans.firstWhere((p) => p.id == _selected);
+    const cta = 'Continue';
 
     return Scaffold(
       body: Column(
@@ -144,7 +127,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _PlanTile(
                       plan: p,
-                      trial: trial,
                       selected: p.id == _selected,
                       onTap: () => setState(() => _selected = p.id),
                     ),
@@ -182,18 +164,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
               child: Column(
                 children: [
-                  if (trial)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        'Free for ${AppState.trialLength.inDays} days, then '
-                        '${plan.price.replaceAll(' ', '')}. Cancel anytime '
-                        'before the trial ends and you won\'t be charged.',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary),
-                      ),
-                    ),
                   PrimaryButton(
                     label: cta,
                     onPressed: _purchase,
@@ -229,14 +199,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
 }
 
 class _PlanTile extends StatelessWidget {
-  const _PlanTile({
-    required this.plan,
-    required this.trial,
-    required this.selected,
-    required this.onTap,
-  });
+  const _PlanTile(
+      {required this.plan, required this.selected, required this.onTap});
   final _Plan plan;
-  final bool trial;
   final bool selected;
   final VoidCallback onTap;
 
@@ -273,10 +238,7 @@ class _PlanTile extends StatelessWidget {
                     Text(plan.name,
                         style: const TextStyle(
                             fontSize: 16, fontWeight: FontWeight.w700)),
-                    Text(
-                        trial
-                            ? '${_trialDays()} free trial · ${plan.note}'
-                            : plan.note,
+                    Text(plan.note,
                         style: const TextStyle(
                             fontSize: 13, color: AppColors.textSecondary)),
                   ],
