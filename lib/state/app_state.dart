@@ -557,12 +557,18 @@ class AppState extends ChangeNotifier {
     pendingAlarm.value = (alarm, launch.action);
   }
 
-  /// Stops a ringing alarm's sound and notification.
+  /// Stops a ringing alarm's sound and notification, keeping its future
+  /// rings.
   Future<void> silenceAlarm(ReadingAlarm alarm) async {
     try {
       await services.alarms.dismiss(alarm.id);
     } catch (e) {
       debugPrint('Dismissing alarm failed: $e');
+    }
+    // Make sure a weekly alarm still rings next time.
+    final saved = alarms.where((a) => a.id == alarm.id).firstOrNull;
+    if (saved != null && saved.enabled && saved.repeatDays.isNotEmpty) {
+      await _schedule(saved);
     }
   }
 
