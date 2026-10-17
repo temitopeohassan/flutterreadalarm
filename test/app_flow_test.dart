@@ -31,7 +31,7 @@ void main() {
     state.dispose();
   }
 
-  testWidgets('onboarding: permissions, first book, test alarm, no paywall',
+  testWidgets('onboarding: permissions, first book, test alarm, paywall',
       (tester) async {
     final (state, fakes) =
         await demoState(onboardingDone: false, emptyLibrary: true);
@@ -64,9 +64,14 @@ void main() {
     expect(find.text('Test alarm scheduled'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5)); // Let the snackbar go.
 
-    // No paywall or free trial at the end of onboarding.
+    // The paywall offers Premium (no free trial) or the free version.
     await tapText(tester, 'Finish setup');
-    expect(find.text('ReadAlarm Premium'), findsNothing);
+    expect(find.text('ReadAlarm Premium'), findsOneWidget);
+    expect(find.text('Continue'), findsOneWidget);
+    expect(find.textContaining('trial'), findsNothing);
+    expect(state.onboardingDone, isFalse);
+    await tapText(tester, 'Continue with ads');
+    expect(state.isPremium, isFalse);
 
     expect(state.onboardingDone, isTrue);
     expect(find.byType(MainShell), findsOneWidget);

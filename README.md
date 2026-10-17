@@ -68,4 +68,4 @@ flutter test screenshot_test
 
 | | | | |
 | --- | --- | --- | --- |
-| ![Welcome](screenshots/01_onboarding_welcome.png) | ![Home](screenshots/12_home.png) | ![Set alarm](screenshots/16_set_alarm.png) | ![Now playing](screenshots/18_now_playing.png) |
+| ![Welcome](screenshots/01_onboarding_welcome.png) | ![Home](screenshots/13_home.png) | ![Set alarm](screenshots/17_set_alarm.png) | ![Now playing](screenshots/19_now_playing.png) |

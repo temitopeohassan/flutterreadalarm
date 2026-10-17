@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
+import '../paywall_screen.dart';
 import 'battery_optimization_screen.dart';
 import 'exact_alarm_permission_screen.dart';
 import 'first_book_screen.dart';
@@ -9,7 +10,7 @@ import 'oem_autostart_screen.dart';
 import 'welcome_screen.dart';
 
 /// Hosts the 6 onboarding screens with a step indicator (ONB-1).
-/// On finish: straight into the main app.
+/// On finish: the paywall (Premium, or continue free), then the app.
 /// Ad consent (ADS-1) is requested after this flow, before the first ad.
 class OnboardingFlow extends StatefulWidget {
   const OnboardingFlow({super.key});
@@ -39,8 +40,12 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     );
   }
 
-  /// Onboarding ends straight in the app: no paywall or free trial.
-  void _finish() => AppScope.of(context).completeOnboarding();
+  /// Offers Premium or the free version, then opens the app (PAY-3).
+  Future<void> _finish() async {
+    final state = AppScope.of(context);
+    await PaywallScreen.open(context);
+    state.completeOnboarding();
+  }
 
   @override
   void dispose() {
