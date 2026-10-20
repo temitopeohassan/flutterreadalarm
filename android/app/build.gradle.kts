@@ -1,7 +1,17 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Play Store builds are signed with your upload key, described by
+// android/key.properties (never committed; see README). Without it the
+// release build is signed with the debug key, fine for test installs.
+val keyProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { stream -> load(stream) }
 }
 
 android {
@@ -39,13 +49,6 @@ android {
                 ?: "ca-app-pub-3940256099942544~3347511713"
     }
 
-    // Play Store builds are signed with your upload key, described by
-    // android/key.properties (never committed; see README). Without it the
-    // release build is signed with the debug key, fine for test installs.
-    val keyProperties = java.util.Properties().apply {
-        val file = rootProject.file("key.properties")
-        if (file.exists()) file.inputStream().use { load(it) }
-    }
     signingConfigs {
         if (keyProperties.isNotEmpty()) {
             create("upload") {
