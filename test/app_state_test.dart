@@ -16,17 +16,13 @@ void main() {
       expect(state.books.length, AppState.freeBookLimit);
       expect(state.canAddBook, isFalse);
 
-      // Free users get 3 alarms; the demo has 2.
-      expect(AppState.freeAlarmLimit, 3);
-      expect(state.canAddAlarm, isTrue);
-      await state.upsertAlarm(ReadingAlarm(
-        id: 'third',
-        time: const TimeOfDay(hour: 21, minute: 0),
-        book: state.books[2],
-        durationMin: 15,
-        repeatDays: const {},
-      ));
+      // Free users get 1 alarm; the demo has 2 (from Premium).
+      expect(AppState.freeAlarmLimit, 1);
       expect(state.canAddAlarm, isFalse);
+      await state.deleteAlarm(state.alarms.last);
+      expect(state.canAddAlarm, isFalse);
+      await state.deleteAlarm(state.alarms.last);
+      expect(state.canAddAlarm, isTrue);
 
       state.setPremium(true);
       expect(state.canAddBook, isTrue);
@@ -303,14 +299,17 @@ void main() {
     final tomorrow =
         DateUtils.dateOnly(DateTime.now()).add(const Duration(days: 1));
 
-    test('free users are stopped at 3 alarms however the save happens',
+    test('free users are stopped at 1 alarm however the save happens',
         () async {
-      final (state, fakes) = await demoState(); // 2 alarms
+      final (state, fakes) = await demoState();
+      for (final a in List.of(state.alarms)) {
+        await state.deleteAlarm(a);
+      }
       expect((await state.saveAlarm(alarmAt('3', 21, 0))).status,
           AlarmSaveStatus.saved);
       expect((await state.saveAlarm(alarmAt('4', 22, 0))).status,
           AlarmSaveStatus.limitReached);
-      expect(state.alarms, hasLength(3));
+      expect(state.alarms, hasLength(1));
       expect(fakes.alarms.scheduled.containsKey('4'), isFalse);
 
       // Editing an existing alarm is still allowed at the limit.
@@ -409,6 +408,71 @@ void main() {
       expect(moved.onceAt!.isAfter(DateTime.now()), isTrue);
       expect(moved.onceAt!.difference(DateTime.now()).inHours, lessThan(25));
       state.dispose();
+    });
+  });
+
+  group('alarms the system dropped', () {
+    test('are scheduled again when the app starts', () async {
+      final (state, fakes) = await demoState();
+      expect(fakes.alarms.scheduled.keys, ['a1']);
+      state.dispose();
+
+      // The phone stopped the app: its alarms are gone, though the plugin
+      // still lists them as pending.
+      fakes.alarms.dropAll();
+      final restored = await AppState.load(fakes.services);
+      expect(fakes.alarms.scheduled.keys, ['a1']);
+      expect(restored.alarms.first.enabled, isTrue);
+      restored.dispose();
+    });
+
+    test('are scheduled again on resync', () async {
+      final (state, fakes) = await demoState();
+      fakes.alarms.dropAll();
+      await state.resyncAlarms();
+      expect(fakes.alarms.scheduled.keys, ['a1']);
+      state.dispose();
+    });
+
+    test('a dated one-off whose time passed is switched off', () async {
+      final (state, fakes) = await demoState(premium: true);
+      final past = DateTime.now().subtract(const Duration(days: 1));
+      await state.upsertAlarm(ReadingAlarm(
+        id: 'gone',
+        time: TimeOfDay(hour: past.hour, minute: past.minute),
+        book: state.books.first,
+        durationMin: 15,
+        repeatDays: const {},
+        date: DateUtils.dateOnly(past),
+      ));
+      fakes.alarms.dropAll();
+      await state.resyncAlarms();
+      expect(state.alarms.firstWhere((a) => a.id == 'gone').enabled, isFalse);
+      expect(fakes.alarms.scheduled.containsKey('gone'), isFalse);
+      state.dispose();
+    });
+  });
+
+  group('free alarms', () {
+    test('without Premium, alarms beyond the free one are switched off',
+        () async {
+      // Set up with Premium (or an earlier version's 3 free alarms).
+      final (state, fakes) = await demoState(premium: true);
+      expect(await state.toggleAlarm(state.alarms.last, true),
+          AlarmSaveStatus.saved);
+      expect(state.alarms.every((a) => a.enabled), isTrue);
+      state.setPremium(false);
+      await pumpEventQueue();
+      state.dispose();
+
+      final restored = await AppState.load(fakes.services);
+      expect([for (final a in restored.alarms) a.enabled], [true, false]);
+      expect(fakes.alarms.scheduled.keys, ['a1']);
+      // Switching the other back on needs Premium.
+      expect(await restored.toggleAlarm(restored.alarms.last, true),
+          AlarmSaveStatus.limitReached);
+      expect(restored.alarms.last.enabled, isFalse);
+      restored.dispose();
     });
   });
 

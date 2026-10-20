@@ -94,7 +94,8 @@ abstract class AlarmScheduler {
   /// The alarm that launched the app, if any.
   Future<AlarmLaunch?> takeLaunch();
 
-  /// (Re)schedules [alarm], or cancels it if it's disabled.
+  /// (Re)schedules [alarm], or cancels it if it's disabled. Safe to repeat:
+  /// it doesn't stop a ring that's going off or drop a snooze.
   Future<void> schedule(ReadingAlarm alarm);
 
   Future<void> cancel(String alarmId);
@@ -162,7 +163,7 @@ Future<void> onBackgroundAlarmAction(NotificationResponse response) async {
   final plugin = FlutterLocalNotificationsPlugin();
   await plugin.initialize(settings: _initSettings);
   await _initTimeZones();
-  await _silence(plugin, payload.alarmId);
+  await _silence(plugin, payload.alarmId, payload: payload);
   await _snooze(plugin, payload);
 }
 
@@ -203,30 +204,50 @@ Future<void> _ringWeekly(FlutterLocalNotificationsPlugin plugin,
   );
 }
 
-/// Removes the ringing notification(s) of [alarmId].
+/// Removes the ringing notification(s) of [alarmId], stopping the sound.
 ///
-/// On Android, cancelling a repeating notification also drops its future
-/// repeats, so weekly rings are put back afterwards.
-Future<void> _silence(
-    FlutterLocalNotificationsPlugin plugin, String alarmId) async {
+/// Matched by notification id: Android doesn't return a showing
+/// notification's payload, so [payload] (or the scheduled ring's) supplies
+/// the alarm's time. Cancelling a repeating notification also drops its
+/// future repeats, so weekly rings are put back afterwards.
+Future<void> _silence(FlutterLocalNotificationsPlugin plugin, String alarmId,
+    {AlarmPayload? payload}) async {
+  final ids = {
+    for (var slot = 0; slot <= _snoozeSlot; slot++)
+      _notificationId(alarmId, slot),
+  };
   final active = await plugin.getActiveNotifications();
-  for (final n in active) {
-    final payload = AlarmPayload.decode(n.payload);
-    final id = n.id;
-    if (payload?.alarmId != alarmId || id == null) continue;
+  final ringing = [
+    for (final n in active)
+      if (n.id != null && ids.contains(n.id)) n,
+  ];
+  if (ringing.isEmpty) return;
+  var known = payload;
+  if (known?.time == null) {
+    try {
+      for (final r in await plugin.pendingNotificationRequests()) {
+        final p = AlarmPayload.decode(r.payload);
+        if (ids.contains(r.id) && p?.time != null) known = p;
+      }
+    } catch (_) {
+      // No scheduled rings to read: weekly rings are put back by the app.
+    }
+  }
+  for (final n in ringing) {
+    final id = n.id!;
     await plugin.cancel(id: id, tag: n.tag);
     final day = id % 10;
-    final time = payload!.time;
-    if (day < _onceSlot && time != null) {
+    final time = known?.time;
+    if (day < _onceSlot && known != null && time != null) {
       final weekly = ReadingAlarm(
         id: alarmId,
         time: time,
-        book: BookInfo(id: payload.bookId, title: '', coverColors: const []),
-        durationMin: payload.durationMin,
+        book: BookInfo(id: known.bookId, title: '', coverColors: const []),
+        durationMin: known.durationMin,
         repeatDays: {day},
       );
       await _ringWeekly(
-          plugin, payload, day, weekly.nextOccurrence(DateTime.now()));
+          plugin, known, day, weekly.nextOccurrence(DateTime.now()));
     }
   }
 }
@@ -243,7 +264,8 @@ class NotificationAlarmScheduler implements AlarmScheduler {
         final launch = _toLaunch(response);
         if (launch == null) return;
         if (launch.action == AlarmAction.snooze) {
-          await _silence(_plugin, launch.payload.alarmId);
+          await _silence(_plugin, launch.payload.alarmId,
+              payload: launch.payload);
           await _snooze(_plugin, launch.payload);
         } else {
           onLaunch(launch);
@@ -276,10 +298,18 @@ class NotificationAlarmScheduler implements AlarmScheduler {
 
   @override
   Future<void> schedule(ReadingAlarm alarm) async {
-    await cancel(alarm.id);
-    if (!alarm.enabled) return;
+    if (!alarm.enabled) return cancel(alarm.id);
     final payload = AlarmPayload.forAlarm(alarm);
     final now = DateTime.now();
+
+    // Scheduling an id again replaces it (without touching a ring that's
+    // showing), so only the slots this alarm no longer uses are cancelled.
+    final slots = alarm.repeatDays.isEmpty ? {_onceSlot} : alarm.repeatDays;
+    for (var slot = 0; slot < _snoozeSlot; slot++) {
+      if (!slots.contains(slot)) {
+        await _plugin.cancel(id: _notificationId(alarm.id, slot));
+      }
+    }
 
     if (alarm.repeatDays.isEmpty) {
       final at = alarm.nextOccurrence(now);

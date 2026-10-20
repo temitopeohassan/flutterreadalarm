@@ -30,14 +30,19 @@ class AppState extends ChangeNotifier {
   }
 
   static const freeBookLimit = 3; // PAY-2
-  static const freeAlarmLimit = 3; // PAY-2
+  static const freeAlarmLimit = 1; // PAY-2
   static const maxStoredSessions = 1000;
 
   final AppServices services;
   late final ReadingController reader;
 
   bool onboardingDone = false;
-  bool isPremium = false;
+
+  /// Premium bought (simulated: billing isn't connected yet).
+  bool purchased = false;
+
+  /// Premium features are on (bought; simulated until billing is wired).
+  bool get isPremium => purchased;
 
   final List<BookInfo> books;
   final List<ReadingAlarm> alarms;
@@ -83,6 +88,7 @@ class AppState extends ChangeNotifier {
     await services.alarms.init(state.openAlarm);
     await state.refreshPermissions();
     unawaited(state.loadVoices());
+    await state._applyFreeAlarmLimit();
     await state._syncAlarms();
     final launch = await services.alarms.takeLaunch();
     if (launch != null) state.openAlarm(launch);
@@ -102,7 +108,7 @@ class AppState extends ChangeNotifier {
   Map<String, Object?> toJson() => {
         'version': 1,
         'onboardingDone': onboardingDone,
-        'isPremium': isPremium,
+        'isPremium': purchased,
         'rewardedUnlockUntil': rewardedUnlockUntil?.toIso8601String(),
         'freeReadDay': _freeReadDay,
         'freeReadSeconds': _freeReadToday.inSeconds,
@@ -117,7 +123,7 @@ class AppState extends ChangeNotifier {
 
   void _restore(Map<String, Object?> json) {
     onboardingDone = json['onboardingDone'] as bool? ?? false;
-    isPremium = json['isPremium'] as bool? ?? false;
+    purchased = json['isPremium'] as bool? ?? false;
     rewardedUnlockUntil =
         DateTime.tryParse(json['rewardedUnlockUntil'] as String? ?? '');
     _freeReadDay = json['freeReadDay'] as String? ?? '';
@@ -177,6 +183,7 @@ class AppState extends ChangeNotifier {
     _texts.removeWhere((id, _) => _findBook(id) == null);
     permissions['autoStart'] = autoStartConfirmed;
     notifyListeners();
+    await _applyFreeAlarmLimit();
   }
 
   // ---- Derived ----------------------------------------------------------
@@ -252,8 +259,33 @@ class AppState extends ChangeNotifier {
 
   /// Simulated purchase (billing is not wired up yet).
   void setPremium(bool value) {
-    isPremium = value;
+    purchased = value;
     _changed();
+  }
+
+  /// Alarms that may ring on the free tier: without Premium (e.g. alarms
+  /// set up by an earlier version, which allowed 3), alarms beyond
+  /// [freeAlarmLimit] are switched off. The earliest-added stay on. Returns the alarms switched off.
+  List<ReadingAlarm> _enforceFreeAlarms() {
+    if (isPremium) return const [];
+    final off = <ReadingAlarm>[];
+    var on = 0;
+    for (var i = 0; i < alarms.length; i++) {
+      if (!alarms[i].enabled) continue;
+      if (++on > freeAlarmLimit) {
+        alarms[i] = alarms[i].copyWith(enabled: false);
+        off.add(alarms[i]);
+      }
+    }
+    if (off.isNotEmpty) _changed();
+    return off;
+  }
+
+  /// [_enforceFreeAlarms], cancelling the alarms it switches off.
+  Future<void> _applyFreeAlarmLimit() async {
+    for (final alarm in _enforceFreeAlarms()) {
+      await _schedule(alarm);
+    }
   }
 
   Future<void> refreshPermissions() async {
@@ -396,7 +428,15 @@ class AppState extends ChangeNotifier {
   ReadingAlarm? clashFor(ReadingAlarm alarm) =>
       alarms.where(alarm.clashesWith).firstOrNull;
 
-  Future<void> toggleAlarm(ReadingAlarm alarm, bool enabled) {
+  /// Switches an alarm on or off. On the free tier only [freeAlarmLimit]
+  /// alarms can be on; switching on another returns limitReached.
+  Future<AlarmSaveStatus> toggleAlarm(ReadingAlarm alarm, bool enabled) async {
+    if (enabled &&
+        !isPremium &&
+        alarms.where((a) => a.enabled && a.id != alarm.id).length >=
+            freeAlarmLimit) {
+      return AlarmSaveStatus.limitReached;
+    }
     var updated = alarm.copyWith(enabled: enabled);
     // A dated one-off alarm switched back on after its day rings next time.
     final once = updated.onceAt;
@@ -405,7 +445,8 @@ class AppState extends ChangeNotifier {
           updated.copyWith(date: () => null).nextOccurrence(DateTime.now());
       updated = updated.copyWith(date: () => next);
     }
-    return upsertAlarm(updated);
+    await upsertAlarm(updated);
+    return AlarmSaveStatus.saved;
   }
 
   Future<void> deleteAlarm(ReadingAlarm alarm) async {
@@ -426,20 +467,31 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// One-off alarms that already rang are switched off; every enabled
-  /// alarm is (re)scheduled so the OS schedule matches the app.
+  /// One-off alarms that already rang are switched off, and every enabled
+  /// alarm is scheduled again, whether or not the plugin lists it as
+  /// pending: its list is its own record, which survives the system
+  /// dropping the alarms (some phones do when they stop an app in the
+  /// background). Run at start-up and whenever the app comes back.
   Future<void> _syncAlarms() async {
     final pending = await services.alarms.pendingAlarmIds();
+    final now = clock.now();
     for (var i = 0; i < alarms.length; i++) {
       final a = alarms[i];
-      if (a.enabled && a.repeatDays.isEmpty && !pending.contains(a.id)) {
-        alarms[i] = a.copyWith(enabled: false);
-      }
+      if (!a.enabled || a.repeatDays.isNotEmpty) continue;
+      final once = a.onceAt;
+      final rang = once != null ? !once.isAfter(now) : !pending.contains(a.id);
+      if (rang) alarms[i] = a.copyWith(enabled: false);
     }
     for (final alarm in alarms.where((a) => a.enabled)) {
-      if (!pending.contains(alarm.id)) await _schedule(alarm);
+      await _schedule(alarm);
     }
     _changed();
+  }
+
+  /// Puts back any alarms the system dropped while the app was away.
+  Future<void> resyncAlarms() async {
+    if (_disposed) return;
+    await _syncAlarms();
   }
 
   /// Rings in one minute with a 1-minute session of the last-read book.
@@ -483,12 +535,18 @@ class AppState extends ChangeNotifier {
     pendingAlarm.value = (alarm, launch.action);
   }
 
-  /// Stops a ringing alarm's sound and notification.
+  /// Stops a ringing alarm's sound and notification, keeping its future
+  /// rings.
   Future<void> silenceAlarm(ReadingAlarm alarm) async {
     try {
       await services.alarms.dismiss(alarm.id);
     } catch (e) {
       debugPrint('Dismissing alarm failed: $e');
+    }
+    // Make sure a weekly alarm still rings next time.
+    final saved = alarms.where((a) => a.id == alarm.id).firstOrNull;
+    if (saved != null && saved.enabled && saved.repeatDays.isNotEmpty) {
+      await _schedule(saved);
     }
   }
 

@@ -31,7 +31,7 @@ void main() {
     state.dispose();
   }
 
-  testWidgets('onboarding: permissions, first book, test alarm, no paywall',
+  testWidgets('onboarding: permissions, first book, test alarm, paywall',
       (tester) async {
     final (state, fakes) =
         await demoState(onboardingDone: false, emptyLibrary: true);
@@ -64,9 +64,14 @@ void main() {
     expect(find.text('Test alarm scheduled'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5)); // Let the snackbar go.
 
-    // No paywall or free trial at the end of onboarding.
+    // The paywall offers Premium (no free trial) or the free version.
     await tapText(tester, 'Finish setup');
-    expect(find.text('ReadAlarm Premium'), findsNothing);
+    expect(find.text('ReadAlarm Premium'), findsOneWidget);
+    expect(find.text('Continue'), findsOneWidget);
+    expect(find.textContaining('trial'), findsNothing);
+    expect(state.onboardingDone, isFalse);
+    await tapText(tester, 'Use The Free Version');
+    expect(state.isPremium, isFalse);
 
     expect(state.onboardingDone, isTrue);
     expect(find.byType(MainShell), findsOneWidget);
@@ -219,10 +224,47 @@ void main() {
     }
     expect(find.text('₦1,500 / month'), findsOneWidget);
 
+    // No free trial on either plan.
+    expect(find.textContaining('trial'), findsNothing);
     await tester.tap(find.text('Monthly'));
     await tester.pumpAndSettle();
     expect(find.text('Continue'), findsOneWidget);
-    expect(find.text('Start 7-day free trial'), findsNothing);
+    expect(find.textContaining('trial'), findsNothing);
+    await close(tester, state);
+  });
+
+  testWidgets('Premium can\'t be bought or switched on yet', (tester) async {
+    final (state, _) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Go ad-free').first);
+    await tester.pumpAndSettle();
+
+    await tapText(tester, 'Continue');
+    expect(find.textContaining('isn\'t available yet'), findsOneWidget);
+    expect(state.isPremium, isFalse);
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5)); // Let the message go.
+
+    // No switch in Settings to turn Premium on or off.
+    await tapText(tester, 'Settings');
+    expect(find.text('Test mode: Premium'), findsNothing);
+    expect(find.byType(SwitchListTile), findsNothing);
+    await close(tester, state);
+  });
+
+  testWidgets('a free user can switch on only one alarm', (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+
+    // The demo's second alarm is off; switching it on needs Premium.
+    await tester.tap(find.byType(Switch).last);
+    await tester.pumpAndSettle();
+    expect(find.text('ReadAlarm Premium'), findsOneWidget);
+    expect(state.alarms.where((a) => a.enabled), hasLength(1));
+    expect(fakes.alarms.scheduled.keys, ['a1']);
     await close(tester, state);
   });
 
@@ -242,12 +284,15 @@ void main() {
 
   testWidgets('a library book can start an alarm for itself', (tester) async {
     final (state, fakes) = await demoState();
+    for (final a in List.of(state.alarms)) {
+      await state.deleteAlarm(a);
+    }
     await tester.pumpWidget(ReadAlarmApp(state: state));
     await tapText(tester, 'Library');
     await tapText(tester, 'Project Hail Mary');
     await tapText(tester, 'Set an alarm');
 
-    // Free users can add a third alarm; the editor has the book chosen.
+    // Free users can add one alarm; the editor has the book chosen.
     expect(find.text('Set new alarm'), findsOneWidget);
     expect(
         find.descendant(
@@ -257,11 +302,11 @@ void main() {
     await tapText(tester, 'Save alarm');
 
     final added = state.alarms.last;
-    expect(state.alarms, hasLength(3));
+    expect(state.alarms, hasLength(1));
     expect(added.book.id, 'b3');
     expect(fakes.alarms.scheduled.containsKey(added.id), isTrue);
 
-    // A fourth alarm needs Premium.
+    // A second alarm needs Premium.
     await tapText(tester, 'Library');
     await tester.tap(find.byTooltip('Book options').first);
     await tester.pumpAndSettle();
@@ -301,9 +346,12 @@ void main() {
 
   testWidgets('an alarm without repeat days asks for its date', (tester) async {
     final (state, fakes) = await demoState();
+    for (final a in List.of(state.alarms)) {
+      await state.deleteAlarm(a);
+    }
     await tester.pumpWidget(ReadAlarmApp(state: state));
     await tester.pumpAndSettle();
-    await tester.tap(find.bySemanticsLabel('Add alarm'));
+    await tester.tap(find.bySemanticsLabel('Add alarm').first);
     await tester.pumpAndSettle();
 
     expect(find.text('Date'), findsNothing);
@@ -359,13 +407,16 @@ void main() {
     await close(tester, state);
   });
 
-  testWidgets('Settings only offers switching Premium off', (tester) async {
-    final (state, _) = await demoState(premium: true);
+  testWidgets('returning to the app puts back dropped alarms', (tester) async {
+    final (state, fakes) = await demoState();
     await tester.pumpWidget(ReadAlarmApp(state: state));
-    await tapText(tester, 'Settings');
-    await tapText(tester, 'Test mode: Premium');
-    expect(state.isPremium, isFalse);
-    expect(find.text('Test mode: Premium'), findsNothing);
+    await tester.pumpAndSettle();
+    fakes.alarms.dropAll();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(fakes.alarms.scheduled.keys, ['a1']);
     await close(tester, state);
   });
 

@@ -99,13 +99,20 @@ class HomeScreen extends StatelessWidget {
                             child: _AlarmCard(
                               alarm: alarm,
                               onTap: () => openEditor(context, existing: alarm),
-                              onToggle: (v) => state.toggleAlarm(alarm, v),
+                              onToggle: (v) async {
+                                final result =
+                                    await state.toggleAlarm(alarm, v);
+                                if (result == AlarmSaveStatus.limitReached &&
+                                    context.mounted) {
+                                  await PaywallScreen.open(context);
+                                }
+                              },
                             ),
                           ),
                         ),
                       if (!state.isPremium)
                         Text(
-                          '${alarms.length} of ${AppState.freeAlarmLimit} free alarms used',
+                          _freeAlarmNote(alarms.length),
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                               fontSize: 12, color: AppColors.textMuted),
@@ -118,6 +125,15 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Under the alarm list for free users.
+String _freeAlarmNote(int count) {
+  const limit = AppState.freeAlarmLimit;
+  const noun = limit == 1 ? 'alarm' : 'alarms';
+  if (count <= limit) return '$count of $limit free $noun used';
+  // Left from an earlier version or Premium: the extras stay off.
+  return 'The free plan includes $limit $noun. Upgrade to switch on more.';
 }
 
 class _AddButton extends StatelessWidget {
