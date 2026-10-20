@@ -95,6 +95,10 @@ class FakeAlarms implements AlarmScheduler {
   final scheduled = <String, ReadingAlarm>{};
   final once = <(AlarmPayload, DateTime)>[];
   final dismissed = <String>[];
+
+  /// Alarms the plugin still lists after the system dropped them (as when
+  /// a phone stops the app in the background).
+  final stalePending = <String>{};
   AlarmLaunch? launch;
   void Function(AlarmLaunch)? onLaunch;
 
@@ -125,7 +129,14 @@ class FakeAlarms implements AlarmScheduler {
   Future<void> dismiss(String alarmId) async => dismissed.add(alarmId);
 
   @override
-  Future<Set<String>> pendingAlarmIds() async => scheduled.keys.toSet();
+  Future<Set<String>> pendingAlarmIds() async =>
+      {...scheduled.keys, ...stalePending};
+
+  /// The system drops every alarm; the plugin's list still has them.
+  void dropAll() {
+    stalePending.addAll(scheduled.keys);
+    scheduled.clear();
+  }
 }
 
 class FakePermissions implements PermissionService {

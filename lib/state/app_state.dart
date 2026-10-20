@@ -467,20 +467,31 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// One-off alarms that already rang are switched off; every enabled
-  /// alarm is (re)scheduled so the OS schedule matches the app.
+  /// One-off alarms that already rang are switched off, and every enabled
+  /// alarm is scheduled again, whether or not the plugin lists it as
+  /// pending: its list is its own record, which survives the system
+  /// dropping the alarms (some phones do when they stop an app in the
+  /// background). Run at start-up and whenever the app comes back.
   Future<void> _syncAlarms() async {
     final pending = await services.alarms.pendingAlarmIds();
+    final now = clock.now();
     for (var i = 0; i < alarms.length; i++) {
       final a = alarms[i];
-      if (a.enabled && a.repeatDays.isEmpty && !pending.contains(a.id)) {
-        alarms[i] = a.copyWith(enabled: false);
-      }
+      if (!a.enabled || a.repeatDays.isNotEmpty) continue;
+      final once = a.onceAt;
+      final rang = once != null ? !once.isAfter(now) : !pending.contains(a.id);
+      if (rang) alarms[i] = a.copyWith(enabled: false);
     }
     for (final alarm in alarms.where((a) => a.enabled)) {
-      if (!pending.contains(alarm.id)) await _schedule(alarm);
+      await _schedule(alarm);
     }
     _changed();
+  }
+
+  /// Puts back any alarms the system dropped while the app was away.
+  Future<void> resyncAlarms() async {
+    if (_disposed) return;
+    await _syncAlarms();
   }
 
   /// Rings in one minute with a 1-minute session of the last-read book.

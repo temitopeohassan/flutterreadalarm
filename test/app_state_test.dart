@@ -411,6 +411,48 @@ void main() {
     });
   });
 
+  group('alarms the system dropped', () {
+    test('are scheduled again when the app starts', () async {
+      final (state, fakes) = await demoState();
+      expect(fakes.alarms.scheduled.keys, ['a1']);
+      state.dispose();
+
+      // The phone stopped the app: its alarms are gone, though the plugin
+      // still lists them as pending.
+      fakes.alarms.dropAll();
+      final restored = await AppState.load(fakes.services);
+      expect(fakes.alarms.scheduled.keys, ['a1']);
+      expect(restored.alarms.first.enabled, isTrue);
+      restored.dispose();
+    });
+
+    test('are scheduled again on resync', () async {
+      final (state, fakes) = await demoState();
+      fakes.alarms.dropAll();
+      await state.resyncAlarms();
+      expect(fakes.alarms.scheduled.keys, ['a1']);
+      state.dispose();
+    });
+
+    test('a dated one-off whose time passed is switched off', () async {
+      final (state, fakes) = await demoState(premium: true);
+      final past = DateTime.now().subtract(const Duration(days: 1));
+      await state.upsertAlarm(ReadingAlarm(
+        id: 'gone',
+        time: TimeOfDay(hour: past.hour, minute: past.minute),
+        book: state.books.first,
+        durationMin: 15,
+        repeatDays: const {},
+        date: DateUtils.dateOnly(past),
+      ));
+      fakes.alarms.dropAll();
+      await state.resyncAlarms();
+      expect(state.alarms.firstWhere((a) => a.id == 'gone').enabled, isFalse);
+      expect(fakes.alarms.scheduled.containsKey('gone'), isFalse);
+      state.dispose();
+    });
+  });
+
   group('free alarms', () {
     test('without Premium, alarms beyond the free one are switched off',
         () async {

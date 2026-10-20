@@ -117,6 +117,27 @@ void main() {
     expect(android.showing, isEmpty);
   });
 
+  test('scheduling again keeps a ringing alarm and its snooze', () async {
+    final scheduler = NotificationAlarmScheduler();
+    final a = alarm();
+    await scheduler.schedule(a);
+    final rings = Set.of(android.scheduled.keys);
+    final monday = rings.firstWhere((id) => id % 10 == 0);
+    android.ring(monday);
+    await scheduler.scheduleOnce(
+        AlarmPayload.forAlarm(a), DateTime.now().add(const Duration(hours: 1)));
+    final snooze = android.scheduled.keys.firstWhere((id) => id % 10 == 8);
+
+    await scheduler.schedule(a);
+    expect(android.showing, {monday});
+    expect(android.scheduled.keys.toSet(), {...rings, snooze});
+
+    // Dropping days cancels only those days.
+    await scheduler.schedule(a.copyWith(repeatDays: {0}));
+    expect(android.scheduled.keys.toSet(), {monday, snooze});
+    expect(android.showing, {monday});
+  });
+
   test('dismissing leaves other alarms ringing', () async {
     final scheduler = NotificationAlarmScheduler();
     await scheduler.schedule(alarm(days: const {}));

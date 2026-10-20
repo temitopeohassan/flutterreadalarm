@@ -52,7 +52,8 @@ class _ReadAlarmAppState extends State<ReadAlarmApp>
     if (lifecycle == AppLifecycleState.resumed) {
       widget.state
           .reloadFromStorage()
-          .whenComplete(widget.state.refreshPermissions);
+          .whenComplete(widget.state.refreshPermissions)
+          .whenComplete(widget.state.resyncAlarms);
     }
   }
 

@@ -94,7 +94,8 @@ abstract class AlarmScheduler {
   /// The alarm that launched the app, if any.
   Future<AlarmLaunch?> takeLaunch();
 
-  /// (Re)schedules [alarm], or cancels it if it's disabled.
+  /// (Re)schedules [alarm], or cancels it if it's disabled. Safe to repeat:
+  /// it doesn't stop a ring that's going off or drop a snooze.
   Future<void> schedule(ReadingAlarm alarm);
 
   Future<void> cancel(String alarmId);
@@ -297,10 +298,18 @@ class NotificationAlarmScheduler implements AlarmScheduler {
 
   @override
   Future<void> schedule(ReadingAlarm alarm) async {
-    await cancel(alarm.id);
-    if (!alarm.enabled) return;
+    if (!alarm.enabled) return cancel(alarm.id);
     final payload = AlarmPayload.forAlarm(alarm);
     final now = DateTime.now();
+
+    // Scheduling an id again replaces it (without touching a ring that's
+    // showing), so only the slots this alarm no longer uses are cancelled.
+    final slots = alarm.repeatDays.isEmpty ? {_onceSlot} : alarm.repeatDays;
+    for (var slot = 0; slot < _snoozeSlot; slot++) {
+      if (!slots.contains(slot)) {
+        await _plugin.cancel(id: _notificationId(alarm.id, slot));
+      }
+    }
 
     if (alarm.repeatDays.isEmpty) {
       final at = alarm.nextOccurrence(now);

@@ -407,6 +407,19 @@ void main() {
     await close(tester, state);
   });
 
+  testWidgets('returning to the app puts back dropped alarms', (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+    fakes.alarms.dropAll();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(fakes.alarms.scheduled.keys, ['a1']);
+    await close(tester, state);
+  });
+
   testWidgets('returning to the app picks up another instance\'s changes',
       (tester) async {
     final (state, fakes) = await demoState();
