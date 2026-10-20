@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../models/reading_alarm.dart';
 import '../services/alarm_scheduler.dart';
+import '../services/billing_service.dart';
 import '../services/book_importer.dart';
 import '../services/book_text.dart';
 import '../services/permission_service.dart';
@@ -15,8 +16,8 @@ import '../services/speech.dart';
 
 /// App state, persisted through [AppServices.storage] after every change.
 ///
-/// Billing (RevenueCat) and ads are simulated: [setPremium] and
-/// [unlockRewarded] stand in for real purchases and rewarded ads.
+/// Premium is bought through Google Play Billing ([buyPremium]); the
+/// last known state is saved so the app works offline.
 class AppState extends ChangeNotifier {
   AppState({
     required this.services,
@@ -38,8 +39,15 @@ class AppState extends ChangeNotifier {
 
   bool onboardingDone = false;
 
-  /// Premium bought (simulated: billing isn't connected yet).
+  /// Premium bought: an active Google Play subscription, as last checked.
   bool purchased = false;
+
+  /// Google Play's prices by product id; empty until loaded (or if the
+  /// store isn't available).
+  Map<String, String> storePrices = const {};
+
+  /// A message about a purchase for the UI to show, e.g. a pending payment.
+  final billingNotice = ValueNotifier<String?>(null);
 
   /// Premium features are on (bought; simulated until billing is wired).
   bool get isPremium => purchased;
@@ -86,6 +94,9 @@ class AppState extends ChangeNotifier {
     await services.speech.init();
     await services.playback.init(state.reader.onCommand);
     await services.alarms.init(state.openAlarm);
+    await services.billing.init(state._onBilling);
+    unawaited(state.refreshPurchases());
+    unawaited(state.loadPrices());
     await state.refreshPermissions();
     unawaited(state.loadVoices());
     await state._applyFreeAlarmLimit();
@@ -100,6 +111,7 @@ class AppState extends ChangeNotifier {
     _disposed = true;
     reader.dispose();
     pendingAlarm.dispose();
+    billingNotice.dispose();
     super.dispose();
   }
 
@@ -257,10 +269,53 @@ class AppState extends ChangeNotifier {
     _changed();
   }
 
-  /// Simulated purchase (billing is not wired up yet).
+  /// Sets whether Premium was bought (from the store's answer).
   void setPremium(bool value) {
+    if (purchased == value) return;
     purchased = value;
     _changed();
+    if (!value) unawaited(_applyFreeAlarmLimit());
+  }
+
+  Future<void> loadPrices() async {
+    try {
+      final prices = await services.billing.prices();
+      if (_disposed || prices.isEmpty) return;
+      storePrices = prices;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Loading prices failed: $e');
+    }
+  }
+
+  /// Asks Google Play which subscriptions are active. Returns null if it
+  /// couldn't be reached (Premium then stays as last known).
+  Future<bool?> refreshPurchases() async {
+    final owned = await services.billing.ownedPremium();
+    if (owned == null || _disposed) return null;
+    setPremium(owned.isNotEmpty);
+    return owned.isNotEmpty;
+  }
+
+  /// Opens Google Play's purchase sheet for a Premium plan.
+  Future<BuyResult> buyPremium(String productId) =>
+      services.billing.buy(productId);
+
+  void _onBilling(BillingEvent event) {
+    if (_disposed) return;
+    switch (event.kind) {
+      case BillingEventKind.purchased:
+        if (!purchased) billingNotice.value = 'Welcome to Premium!';
+        setPremium(true);
+      case BillingEventKind.pending:
+        billingNotice.value = 'Payment pending. Premium starts as soon as '
+            'Google Play confirms it.';
+      case BillingEventKind.failed:
+        billingNotice.value = 'The purchase didn\'t go through. '
+            '${event.message ?? 'Please try again.'}';
+      case BillingEventKind.cancelled:
+        break;
+    }
   }
 
   /// Alarms that may ring on the free tier: without Premium (e.g. alarms

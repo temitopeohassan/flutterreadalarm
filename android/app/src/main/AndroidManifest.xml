@@ -64,6 +64,10 @@
             android:name="com.readalarm.readalarm.NOTIFICATION_ICON"
             android:resource="@drawable/ic_stat_readalarm" />
 
+        <!-- AdMob app id, from admobAppId in android/app/build.gradle.kts. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${admobAppId}" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

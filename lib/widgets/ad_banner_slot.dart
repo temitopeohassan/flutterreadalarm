@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import '../screens/paywall_screen.dart';
+import '../services/ads_service.dart';
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
 
 /// Bottom banner slot for free users (ADS-2). Renders nothing for Premium.
 ///
-/// Production: replace the placeholder box with `AdWidget(ad: bannerAd)`
-/// sized from `AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize`,
-/// and hide the slot if the ad fails to load.
+/// The banner is AdMob's (see [AdsService]); it takes no space until an ad
+/// has loaded.
 class AdBannerSlot extends StatelessWidget {
   const AdBannerSlot({super.key});
 
@@ -24,21 +24,7 @@ class AdBannerSlot extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
       child: Row(
         children: [
-          Expanded(
-            child: Container(
-              height: 50,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: AppColors.cream,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: const Text(
-                'Ad',
-                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-              ),
-            ),
-          ),
+          Expanded(child: AdsService.instance.banner()),
           TextButton(
             onPressed: () => PaywallScreen.open(context),
             style: TextButton.styleFrom(foregroundColor: AppColors.orange),

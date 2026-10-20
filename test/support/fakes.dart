@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:readalarm/models/reading_alarm.dart';
 import 'package:readalarm/services/alarm_scheduler.dart';
+import 'package:readalarm/services/billing_service.dart';
 import 'package:readalarm/services/book_extractor.dart';
 import 'package:readalarm/services/book_importer.dart';
 import 'package:readalarm/services/book_text.dart';
@@ -220,6 +221,44 @@ class FakeImporter implements BookImporter {
   }
 }
 
+/// Google Play, off by default (as on a sideloaded test build). With
+/// [available] on, buying succeeds at once unless [nextPurchase] says
+/// otherwise.
+class FakeBilling implements BillingService {
+  bool available = false;
+  final owned = <String>{};
+  BillingEventKind nextPurchase = BillingEventKind.purchased;
+  final bought = <String>[];
+  void Function(BillingEvent event)? _onEvent;
+
+  @override
+  Future<void> init(void Function(BillingEvent event) onEvent) async =>
+      _onEvent = onEvent;
+
+  @override
+  Future<Map<String, String>> prices() async => available
+      ? {
+          PremiumPlans.monthly: '₦1,500.00',
+          PremiumPlans.yearly: '₦12,000.00',
+        }
+      : const {};
+
+  @override
+  Future<BuyResult> buy(String productId) async {
+    if (!available) return BuyResult.unavailable;
+    bought.add(productId);
+    final kind = nextPurchase;
+    if (kind == BillingEventKind.purchased) owned.add(productId);
+    // The store reports back after the purchase sheet closes.
+    scheduleMicrotask(() => _onEvent
+        ?.call(BillingEvent(kind, productId: productId, message: 'Declined')));
+    return BuyResult.started;
+  }
+
+  @override
+  Future<Set<String>?> ownedPremium() async => available ? Set.of(owned) : null;
+}
+
 class FakeServices {
   FakeServices({this.speechOverride});
 
@@ -232,6 +271,7 @@ class FakeServices {
   final permissions = FakePermissions();
   final playback = FakePlayback();
   final importer = FakeImporter();
+  final billing = FakeBilling();
 
   AppServices get services => AppServices(
         storage: storage,
@@ -240,6 +280,7 @@ class FakeServices {
         permissions: permissions,
         playback: playback,
         importer: importer,
+        billing: billing,
         deviceBrand: 'tecno',
       );
 }

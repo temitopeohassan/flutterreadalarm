@@ -5,6 +5,7 @@ import 'screens/now_playing_screen.dart';
 import 'screens/paywall_screen.dart';
 import 'screens/onboarding/onboarding_flow.dart';
 import 'screens/reading_reminder_screen.dart';
+import 'services/ads_service.dart';
 import 'services/alarm_scheduler.dart';
 import 'services/services.dart';
 import 'state/app_state.dart';
@@ -12,6 +13,7 @@ import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  AdsService.instance = MobileAdsService();
   final state = await AppState.load(await AppServices.device());
   runApp(ReadAlarmApp(state: state));
 }
@@ -27,6 +29,8 @@ class ReadAlarmApp extends StatefulWidget {
 class _ReadAlarmAppState extends State<ReadAlarmApp>
     with WidgetsBindingObserver {
   final _navigatorKey = GlobalKey<NavigatorState>();
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  bool _adsStarted = false;
 
   @override
   void initState() {
@@ -34,13 +38,20 @@ class _ReadAlarmAppState extends State<ReadAlarmApp>
     WidgetsBinding.instance.addObserver(this);
     widget.state.pendingAlarm.addListener(_showPendingAlarm);
     widget.state.reader.addListener(_onReaderChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _showPendingAlarm());
+    widget.state.billingNotice.addListener(_showBillingNotice);
+    widget.state.addListener(_maybeStartAds);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showPendingAlarm();
+      _maybeStartAds();
+    });
   }
 
   @override
   void dispose() {
     widget.state.pendingAlarm.removeListener(_showPendingAlarm);
     widget.state.reader.removeListener(_onReaderChanged);
+    widget.state.billingNotice.removeListener(_showBillingNotice);
+    widget.state.removeListener(_maybeStartAds);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -53,8 +64,30 @@ class _ReadAlarmAppState extends State<ReadAlarmApp>
       widget.state
           .reloadFromStorage()
           .whenComplete(widget.state.refreshPermissions)
-          .whenComplete(widget.state.resyncAlarms);
+          .whenComplete(widget.state.resyncAlarms)
+          .whenComplete(widget.state.refreshPurchases);
     }
+  }
+
+  /// Ads (and the consent form, where required) start after onboarding,
+  /// for free users only (ADS-1, ADS-6).
+  void _maybeStartAds() {
+    final state = widget.state;
+    if (_adsStarted || !state.onboardingDone || state.isPremium) return;
+    _adsStarted = true;
+    AdsService.instance.start();
+  }
+
+  void _showBillingNotice() {
+    final message = widget.state.billingNotice.value;
+    if (message == null) return;
+    widget.state.billingNotice.value = null;
+    _messengerKey.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ));
   }
 
   CompletedSession? _limitShownFor;
@@ -99,6 +132,7 @@ class _ReadAlarmAppState extends State<ReadAlarmApp>
       child: MaterialApp(
         title: 'ReadAlarm',
         navigatorKey: _navigatorKey,
+        scaffoldMessengerKey: _messengerKey,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         home: const _Root(),

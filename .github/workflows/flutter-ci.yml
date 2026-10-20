@@ -57,11 +57,29 @@ jobs:
 
       # Release builds are signed with the debug key until a release
       # keystore is configured in android/app/build.gradle.kts.
+      # Google's test ads unless the repository has the real AdMob ids as
+      # Actions secrets (Settings → Secrets and variables → Actions).
+      - name: AdMob ids
+        env:
+          BANNER: ${{ secrets.ADMOB_BANNER_ID }}
+          INTERSTITIAL: ${{ secrets.ADMOB_INTERSTITIAL_ID }}
+          REWARDED: ${{ secrets.ADMOB_REWARDED_ID }}
+        run: |
+          args=""
+          [ -n "$BANNER" ] && args="$args --dart-define=ADMOB_BANNER_ID=$BANNER"
+          [ -n "$INTERSTITIAL" ] && args="$args --dart-define=ADMOB_INTERSTITIAL_ID=$INTERSTITIAL"
+          [ -n "$REWARDED" ] && args="$args --dart-define=ADMOB_REWARDED_ID=$REWARDED"
+          echo "AD_ARGS=$args" >> "$GITHUB_ENV"
+
       - name: Build release APKs (one per ABI)
-        run: flutter build apk --release --split-per-abi
+        env:
+          ORG_GRADLE_PROJECT_admobAppId: ${{ secrets.ADMOB_APP_ID }}
+        run: flutter build apk --release --split-per-abi $AD_ARGS
 
       - name: Build universal release APK
-        run: flutter build apk --release
+        env:
+          ORG_GRADLE_PROJECT_admobAppId: ${{ secrets.ADMOB_APP_ID }}
+        run: flutter build apk --release $AD_ARGS
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4

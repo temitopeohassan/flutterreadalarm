@@ -180,16 +180,34 @@ class SettingsScreen extends StatelessWidget {
                         leading: const Icon(Icons.restore_rounded,
                             color: AppColors.navy),
                         title: const Text('Restore purchases'),
-                        // TODO: Purchases.restorePurchases()
-                        onTap: () =>
-                            showSnack(context, 'No previous purchases found.'),
+                        onTap: () async {
+                          final found = await state.refreshPurchases();
+                          if (!context.mounted) return;
+                          showSnack(
+                            context,
+                            switch (found) {
+                              true => 'Premium restored.',
+                              false =>
+                                'No active subscription on this Google account.',
+                              null =>
+                                'Couldn\'t reach Google Play. Please try again.',
+                            },
+                          );
+                        },
                       ),
+                      // Required where the law asks for ad consent (EEA, UK).
                       if (!state.isPremium)
-                        ListTile(
-                          leading: const Icon(Icons.privacy_tip_outlined,
-                              color: AppColors.navy),
-                          title: const Text('Ad privacy options'),
-                          onTap: AdsService.instance.showPrivacyOptions,
+                        FutureBuilder(
+                          future: AdsService.instance.privacyOptionsRequired(),
+                          builder: (context, required) => required.data == true
+                              ? ListTile(
+                                  leading: const Icon(
+                                      Icons.privacy_tip_outlined,
+                                      color: AppColors.navy),
+                                  title: const Text('Ad privacy options'),
+                                  onTap: AdsService.instance.showPrivacyOptions,
+                                )
+                              : const SizedBox.shrink(),
                         ),
                       ListTile(
                         leading: const Icon(Icons.info_outline_rounded,
@@ -243,7 +261,7 @@ class _PremiumCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   isPremium
-                      ? 'No ads. Unlimited books and alarms.'
+                      ? 'No ads. Manage it in Google Play → Subscriptions.'
                       : 'Unlimited books, 60-min sessions, every voice.',
                   style:
                       const TextStyle(color: Color(0xFFC9CFE3), fontSize: 13),

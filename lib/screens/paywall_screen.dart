@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/billing_service.dart';
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
@@ -9,10 +10,9 @@ enum PaywallReason { upgrade, dailyLimit }
 
 /// Premium paywall (PAY-1, PAY-3). Dismissible.
 ///
-/// Billing isn't connected yet, so purchasing doesn't unlock Premium; it
-/// says Premium is coming soon. To connect it: load the RevenueCat offering
-/// (Purchases.getOfferings), use each package's storeProduct.priceString,
-/// and purchase with Purchases.purchasePackage.
+/// Plans are Google Play subscriptions ([PremiumPlans]), shown with Play's
+/// prices once loaded. Premium starts when Play confirms the purchase; the
+/// paywall then closes by itself.
 class PaywallScreen extends StatefulWidget {
   const PaywallScreen({super.key, this.reason = PaywallReason.upgrade});
 
@@ -35,15 +35,19 @@ class PaywallScreen extends StatefulWidget {
 }
 
 class _Plan {
-  const _Plan(this.id, this.name, this.price, this.note);
-  final String id, name, price, note;
+  const _Plan(this.id, this.name, this.fallbackPrice, this.period, this.note);
+  final String id, name, fallbackPrice, period, note;
+
+  /// Google Play's price if loaded, e.g. "₦12,000.00 / year".
+  String price(AppState state) =>
+      '${state.storePrices[id] ?? fallbackPrice} / $period';
 }
 
 class _PaywallScreenState extends State<PaywallScreen> {
-  // PLACEHOLDER prices — replace with RevenueCat priceString values.
+  // Shown until Google Play's prices load.
   static const _plans = [
-    _Plan('yearly', 'Yearly', '₦12,000 / year', 'Best value'),
-    _Plan('monthly', 'Monthly', '₦1,500 / month', 'Cancel anytime'),
+    _Plan(PremiumPlans.yearly, 'Yearly', '₦12,000', 'year', 'Best value'),
+    _Plan(PremiumPlans.monthly, 'Monthly', '₦1,500', 'month', 'Cancel anytime'),
   ];
 
   static const _benefits = [
@@ -56,23 +60,69 @@ class _PaywallScreenState extends State<PaywallScreen> {
     (Icons.insights_rounded, 'Full reading history'),
   ];
 
-  String _selected = 'yearly';
+  String _selected = PremiumPlans.yearly;
+  bool _busy = false;
+  AppState? _state;
 
-  /// Billing isn't connected yet: no plan can be bought, so the free tier
-  /// can be tested as it is.
-  void _purchase() {
-    showSnack(
-        context, 'Premium isn\'t available yet. Purchases are coming soon.');
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final state = AppScope.of(context);
+    if (_state != state) {
+      _state?.removeListener(_onStateChanged);
+      _state = state..addListener(_onStateChanged);
+      if (state.storePrices.isEmpty) state.loadPrices();
+    }
+  }
+
+  @override
+  void dispose() {
+    _state?.removeListener(_onStateChanged);
+    super.dispose();
+  }
+
+  /// Closes the paywall once Premium starts.
+  void _onStateChanged() {
+    if (!(_state?.isPremium ?? false) || !mounted) return;
+    _state?.removeListener(_onStateChanged);
+    Navigator.of(context).maybePop();
+  }
+
+  Future<void> _purchase() async {
+    setState(() => _busy = true);
+    final result = await AppScope.of(context).buyPremium(_selected);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    switch (result) {
+      case BuyResult.started:
+        break; // Google Play takes over; the result arrives as an event.
+      case BuyResult.unavailable:
+        showSnack(
+            context,
+            'Purchases aren\'t available. Install ReadAlarm from Google Play '
+            'and sign in to the Play Store to subscribe.');
+      case BuyResult.failed:
+        showSnack(context, 'Couldn\'t open Google Play. Please try again.');
+    }
   }
 
   Future<void> _restore() async {
-    // TODO: Purchases.restorePurchases()
-    showSnack(context, 'No previous purchases found.');
+    final found = await AppScope.of(context).refreshPurchases();
+    if (!mounted) return;
+    showSnack(
+      context,
+      switch (found) {
+        true => 'Premium restored.',
+        false => 'No active subscription on this Google account.',
+        null => 'Couldn\'t reach Google Play. Please try again.',
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    const cta = 'Continue';
+    final state = AppScope.of(context);
+    final cta = _busy ? 'Opening Google Play…' : 'Continue';
 
     return Scaffold(
       body: Column(
@@ -128,6 +178,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _PlanTile(
                       plan: p,
+                      price: p.price(state),
                       selected: p.id == _selected,
                       onTap: () => setState(() => _selected = p.id),
                     ),
@@ -167,7 +218,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 children: [
                   PrimaryButton(
                     label: cta,
-                    onPressed: _purchase,
+                    onPressed: _busy ? null : _purchase,
                   ),
                   // The free option: as clear a choice as Premium.
                   SizedBox(
@@ -209,9 +260,14 @@ class _PaywallScreenState extends State<PaywallScreen> {
 }
 
 class _PlanTile extends StatelessWidget {
-  const _PlanTile(
-      {required this.plan, required this.selected, required this.onTap});
+  const _PlanTile({
+    required this.plan,
+    required this.price,
+    required this.selected,
+    required this.onTap,
+  });
   final _Plan plan;
+  final String price;
   final bool selected;
   final VoidCallback onTap;
 
@@ -254,7 +310,7 @@ class _PlanTile extends StatelessWidget {
                   ],
                 ),
               ),
-              Text(plan.price,
+              Text(price,
                   style: const TextStyle(
                       fontSize: 15, fontWeight: FontWeight.w600)),
             ],

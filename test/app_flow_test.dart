@@ -4,6 +4,7 @@ import 'package:readalarm/main.dart';
 import 'package:readalarm/models/reading_alarm.dart';
 import 'package:readalarm/screens/main_shell.dart';
 import 'package:readalarm/services/alarm_scheduler.dart';
+import 'package:readalarm/services/billing_service.dart';
 import 'package:readalarm/services/book_importer.dart';
 import 'package:readalarm/state/app_state.dart';
 
@@ -233,7 +234,7 @@ void main() {
     await close(tester, state);
   });
 
-  testWidgets('Premium can\'t be bought or switched on yet', (tester) async {
+  testWidgets('without Google Play, Premium can\'t be bought', (tester) async {
     final (state, _) = await demoState();
     await tester.pumpWidget(ReadAlarmApp(state: state));
     await tester.pumpAndSettle();
@@ -241,7 +242,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tapText(tester, 'Continue');
-    expect(find.textContaining('isn\'t available yet'), findsOneWidget);
+    expect(find.textContaining('Purchases aren\'t available'), findsOneWidget);
     expect(state.isPremium, isFalse);
     await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
@@ -251,6 +252,67 @@ void main() {
     await tapText(tester, 'Settings');
     expect(find.text('Test mode: Premium'), findsNothing);
     expect(find.byType(SwitchListTile), findsNothing);
+    await close(tester, state);
+  });
+
+  testWidgets('buying Premium on Google Play unlocks it', (tester) async {
+    final (state, fakes) = await demoState();
+    fakes.billing.available = true;
+    await state.loadPrices();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Go ad-free').first);
+    await tester.pumpAndSettle();
+
+    // Google Play's prices.
+    expect(find.text('₦12,000.00 / year'), findsOneWidget);
+    expect(find.text('₦1,500.00 / month'), findsOneWidget);
+
+    await tester.tap(find.text('Monthly'));
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Continue');
+    expect(fakes.billing.bought, [PremiumPlans.monthly]);
+    expect(state.isPremium, isTrue);
+    // The paywall closes and Premium is welcomed.
+    expect(find.text('ReadAlarm Premium'), findsNothing);
+    expect(find.text('Welcome to Premium!'), findsOneWidget);
+    expect(find.text('Go ad-free'), findsNothing, reason: 'no banner');
+    await close(tester, state);
+  });
+
+  testWidgets('a pending payment says so and doesn\'t unlock Premium',
+      (tester) async {
+    final (state, fakes) = await demoState();
+    fakes.billing
+      ..available = true
+      ..nextPurchase = BillingEventKind.pending;
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Go ad-free').first);
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Continue');
+    expect(state.isPremium, isFalse);
+    expect(find.textContaining('Payment pending'), findsOneWidget);
+    await close(tester, state);
+  });
+
+  testWidgets('Restore purchases finds an active subscription', (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tapText(tester, 'Settings');
+
+    // Not reachable.
+    await tapText(tester, 'Restore purchases');
+    expect(find.textContaining('Couldn\'t reach Google Play'), findsOneWidget);
+
+    fakes.billing.available = true;
+    await tapText(tester, 'Restore purchases');
+    expect(find.textContaining('No active subscription'), findsOneWidget);
+
+    fakes.billing.owned.add(PremiumPlans.yearly);
+    await tapText(tester, 'Restore purchases');
+    expect(find.text('Premium restored.'), findsOneWidget);
+    expect(state.isPremium, isTrue);
     await close(tester, state);
   });
 
@@ -390,7 +452,7 @@ void main() {
 
     // Billing isn't connected: buying doesn't unlock Premium.
     await tapText(tester, 'Continue');
-    expect(find.textContaining('isn\'t available yet'), findsOneWidget);
+    expect(find.textContaining('Purchases aren\'t available'), findsOneWidget);
     expect(state.isPremium, isFalse);
 
     // Closing it shows the session summary; reading again is refused.

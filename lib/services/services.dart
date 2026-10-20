@@ -2,6 +2,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 
 import 'alarm_scheduler.dart';
+import 'billing_service.dart';
 import 'book_importer.dart';
 import 'permission_service.dart';
 import 'playback_service.dart';
@@ -17,6 +18,7 @@ class AppServices {
     required this.permissions,
     required this.playback,
     required this.importer,
+    required this.billing,
     this.deviceBrand = '',
   });
 
@@ -26,6 +28,7 @@ class AppServices {
   final PermissionService permissions;
   final PlaybackService playback;
   final BookImporter importer;
+  final BillingService billing;
 
   /// Phone manufacturer, lower case, e.g. 'samsung' ('' if unknown).
   final String deviceBrand;
@@ -44,6 +47,7 @@ class AppServices {
       permissions: AndroidPermissionService(),
       playback: ForegroundPlaybackService(),
       importer: DeviceBookImporter(),
+      billing: PlayBillingService(),
       deviceBrand: brand.toLowerCase(),
     );
   }
