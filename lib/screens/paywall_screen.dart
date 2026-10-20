@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 
 /// Why the paywall was shown.
@@ -168,20 +169,29 @@ class _PaywallScreenState extends State<PaywallScreen> {
                     label: cta,
                     onPressed: _purchase,
                   ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      TextButton(
-                        onPressed: _restore,
-                        child: const Text('Restore purchases',
-                            style: TextStyle(color: AppColors.textSecondary)),
+                  // The free option: as clear a choice as Premium.
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Continue with ads',
-                            style: TextStyle(color: AppColors.textSecondary)),
+                      child: const Text(
+                        'Use The Free Version',
+                        style: TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          color: AppColors.navy,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _restore,
+                    child: const Text('Restore purchases',
+                        style: TextStyle(color: AppColors.textSecondary)),
                   ),
                   const Text(
                     'Billed through Google Play. Cancel anytime in Play Store subscriptions.',

@@ -103,7 +103,7 @@ void main() {
 
     await tapText(tester, 'Finish setup');
     await _shot(tester, '11_paywall');
-    await tapText(tester, 'Continue with ads');
+    await tapText(tester, 'Use The Free Version');
     await _shot(tester, '12_home_first_run');
 
     await _finish(tester, state);

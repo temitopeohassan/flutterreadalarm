@@ -70,7 +70,7 @@ void main() {
     expect(find.text('Continue'), findsOneWidget);
     expect(find.textContaining('trial'), findsNothing);
     expect(state.onboardingDone, isFalse);
-    await tapText(tester, 'Continue with ads');
+    await tapText(tester, 'Use The Free Version');
     expect(state.isPremium, isFalse);
 
     expect(state.onboardingDone, isTrue);
