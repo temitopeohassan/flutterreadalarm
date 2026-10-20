@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../models/reading_alarm.dart';
-import '../services/ads_service.dart';
 import '../state/app_state.dart';
 import '../widgets/common.dart';
 import 'paywall_screen.dart';
@@ -10,7 +9,7 @@ import '../widgets/book_cover.dart';
 import '../widgets/navy_header.dart';
 
 /// Screen — create or edit an alarm (ALM-1). Pops with the saved [ReadingAlarm].
-/// 60-min sessions need Premium or a rewarded-ad unlock (PAY-2, ADS-4).
+/// 60-min sessions need Premium (PAY-2).
 class SetAlarmScreen extends StatefulWidget {
   const SetAlarmScreen({super.key, this.initial, this.initialBook});
 
@@ -99,57 +98,9 @@ class _SetAlarmScreenState extends State<SetAlarmScreen> {
       setState(() => _durationIndex = index);
       return;
     }
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.cream,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const IconBadge(icon: Icons.timer_rounded, size: 80),
-              const SizedBox(height: 16),
-              const Text('60-minute sessions',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 6),
-              const Text(
-                'Watch a short ad to unlock 60 minutes for the next 24 hours, '
-                'or go Premium for no ads and no limits.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textSecondary, height: 1.4),
-              ),
-              const SizedBox(height: 20),
-              PrimaryButton(
-                label: 'Watch ad to unlock',
-                icon: Icons.play_circle_outline_rounded,
-                onPressed: () => Navigator.pop(ctx, 'ad'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, 'premium'),
-                child: const Text('Go Premium',
-                    style: TextStyle(color: AppColors.orange)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (!mounted) return;
-    if (choice == 'ad') {
-      final earned = await AdsService.instance.showRewarded();
-      if (earned && mounted) {
-        state.unlockRewarded();
-        setState(() => _durationIndex = index);
-      }
-    } else if (choice == 'premium') {
-      await PaywallScreen.open(context);
-      if (mounted && state.has60MinAccess) {
-        setState(() => _durationIndex = index);
-      }
+    await PaywallScreen.open(context);
+    if (mounted && state.has60MinAccess) {
+      setState(() => _durationIndex = index);
     }
   }
 

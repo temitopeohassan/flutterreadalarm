@@ -31,8 +31,7 @@ version, which allowed 3) are switched off, the first one added staying on.
 
 **Ads (free users only):** an AdMob banner at the bottom of the main
 screens, an interstitial after some sessions (at most 3 a day, 10 minutes
-apart, never over the lock screen), and a rewarded ad that unlocks 60-minute
-sessions for a day. Google's consent form is shown first where the law
+apart, never over the lock screen). Google's consent form is shown first where the law
 requires it (EEA, UK), with "Ad privacy options" in Settings. No ads on the
 alarm screens or for Premium.
 
@@ -77,17 +76,15 @@ purchases aren't available.
 1. In [AdMob](https://admob.google.com), add the app (Android, link it to
    the Play listing once it exists) and note its **App ID**
    (`ca-app-pub-…~…`).
-2. Create three ad units: **Banner**, **Interstitial** and **Rewarded**, and
+2. Create two ad units: **Banner** and **Interstitial**, and
    note their ids (`ca-app-pub-…/…`).
 3. **Privacy & messaging**: create a GDPR consent message for the app.
 4. Add the ids to GitHub (**Settings → Secrets and variables → Actions**):
-   `ADMOB_APP_ID`, `ADMOB_BANNER_ID`, `ADMOB_INTERSTITIAL_ID`,
-   `ADMOB_REWARDED_ID`. CI then builds with real ads. Locally:
+   `ADMOB_APP_ID`, `ADMOB_BANNER_ID` and `ADMOB_INTERSTITIAL_ID`. CI then builds with real ads. Locally:
    ```sh
    flutter build appbundle --release -PadmobAppId=ca-app-pub-…~… \
      --dart-define=ADMOB_BANNER_ID=ca-app-pub-…/… \
-     --dart-define=ADMOB_INTERSTITIAL_ID=ca-app-pub-…/… \
-     --dart-define=ADMOB_REWARDED_ID=ca-app-pub-…/…
+     --dart-define=ADMOB_INTERSTITIAL_ID=ca-app-pub-…/…
    ```
    Never tap your own real ads: test with the default (test) build.
 5. Publish an `app-ads.txt` on your developer website (AdMob shows its

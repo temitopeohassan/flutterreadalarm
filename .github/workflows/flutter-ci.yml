@@ -63,12 +63,10 @@ jobs:
         env:
           BANNER: ${{ secrets.ADMOB_BANNER_ID }}
           INTERSTITIAL: ${{ secrets.ADMOB_INTERSTITIAL_ID }}
-          REWARDED: ${{ secrets.ADMOB_REWARDED_ID }}
         run: |
           args=""
           [ -n "$BANNER" ] && args="$args --dart-define=ADMOB_BANNER_ID=$BANNER"
           [ -n "$INTERSTITIAL" ] && args="$args --dart-define=ADMOB_INTERSTITIAL_ID=$INTERSTITIAL"
-          [ -n "$REWARDED" ] && args="$args --dart-define=ADMOB_REWARDED_ID=$REWARDED"
           echo "AD_ARGS=$args" >> "$GITHUB_ENV"
 
       - name: Build release APKs (one per ABI)

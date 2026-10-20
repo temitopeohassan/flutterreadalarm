@@ -62,9 +62,6 @@ class AppState extends ChangeNotifier {
   double speed = 1.0;
   double pitch = 1.0;
 
-  /// Rewarded-ad unlock of the 60-min duration (ADS-4).
-  DateTime? rewardedUnlockUntil;
-
   /// Free reading allowance per day, reset at local midnight.
   static const freeDailyReading = Duration(minutes: 15);
 
@@ -121,7 +118,6 @@ class AppState extends ChangeNotifier {
         'version': 1,
         'onboardingDone': onboardingDone,
         'isPremium': purchased,
-        'rewardedUnlockUntil': rewardedUnlockUntil?.toIso8601String(),
         'freeReadDay': _freeReadDay,
         'freeReadSeconds': _freeReadToday.inSeconds,
         'autoStartConfirmed': autoStartConfirmed,
@@ -136,8 +132,6 @@ class AppState extends ChangeNotifier {
   void _restore(Map<String, Object?> json) {
     onboardingDone = json['onboardingDone'] as bool? ?? false;
     purchased = json['isPremium'] as bool? ?? false;
-    rewardedUnlockUntil =
-        DateTime.tryParse(json['rewardedUnlockUntil'] as String? ?? '');
     _freeReadDay = json['freeReadDay'] as String? ?? '';
     _freeReadToday = Duration(seconds: json['freeReadSeconds'] as int? ?? 0);
     autoStartConfirmed = json['autoStartConfirmed'] as bool? ?? false;
@@ -203,10 +197,8 @@ class AppState extends ChangeNotifier {
   bool get canAddBook => isPremium || books.length < freeBookLimit;
   bool get canAddAlarm => isPremium || alarms.length < freeAlarmLimit;
 
-  bool get has60MinAccess =>
-      isPremium ||
-      (rewardedUnlockUntil != null &&
-          rewardedUnlockUntil!.isAfter(DateTime.now()));
+  /// 60-minute sessions are Premium only.
+  bool get has60MinAccess => isPremium;
 
   bool get allPermissionsGranted => permissions.values.every((v) => v);
 
@@ -618,12 +610,6 @@ class AppState extends ChangeNotifier {
   void addSession(ReadingSession s) {
     sessions.insert(0, s);
     if (sessions.length > maxStoredSessions) sessions.removeLast();
-    _changed();
-  }
-
-  /// Simulated rewarded ad (ads are not wired up yet).
-  void unlockRewarded() {
-    rewardedUnlockUntil = DateTime.now().add(const Duration(hours: 24));
     _changed();
   }
 

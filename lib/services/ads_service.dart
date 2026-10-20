@@ -15,13 +15,10 @@ class AdUnits {
       defaultValue: 'ca-app-pub-3940256099942544/9214589741');
   static const interstitial = String.fromEnvironment('ADMOB_INTERSTITIAL_ID',
       defaultValue: 'ca-app-pub-3940256099942544/1033173712');
-  static const rewarded = String.fromEnvironment('ADMOB_REWARDED_ID',
-      defaultValue: 'ca-app-pub-3940256099942544/5224354917');
 }
 
-/// Ads for free users (PRD ADS-1..7): a banner on the main screens, an
-/// interstitial now and then after a session, and a rewarded ad that
-/// unlocks 60-minute sessions for a day. Never on the alarm screens.
+/// Ads for free users (PRD ADS-1..7): a banner on the main screens and an
+/// interstitial now and then after a session. Never on the alarm screens.
 abstract class AdsService {
   /// The app's ads; tests keep the placeholder.
   static AdsService instance = PlaceholderAds();
@@ -42,9 +39,6 @@ abstract class AdsService {
   /// Shows an interstitial if one is loaded and the caps allow. Returns
   /// true if one was shown.
   bool maybeShowInterstitial({required bool isPremium});
-
-  /// Shows a rewarded ad; true once the reward is earned.
-  Future<bool> showRewarded();
 
   /// Whether the user must be offered ad privacy choices (EEA, UK).
   Future<bool> privacyOptionsRequired();
@@ -75,8 +69,7 @@ class _InterstitialCaps {
   }
 }
 
-/// Stands in for ads in tests and screenshots: a labelled box, and a
-/// rewarded ad that always pays out.
+/// Stands in for ads in tests and screenshots: a labelled box.
 class PlaceholderAds implements AdsService {
   final _caps = _InterstitialCaps();
   final _ready = ValueNotifier(true);
@@ -105,12 +98,6 @@ class PlaceholderAds implements AdsService {
     final now = DateTime.now();
     if (isPremium || !_caps.allows(now)) return false;
     _caps.record(now);
-    return true;
-  }
-
-  @override
-  Future<bool> showRewarded() async {
-    await Future<void>.delayed(const Duration(milliseconds: 600));
     return true;
   }
 
@@ -210,43 +197,6 @@ class MobileAdsService implements AdsService {
     ad.show();
     _caps.record(now);
     return true;
-  }
-
-  @override
-  Future<bool> showRewarded() async {
-    if (!_ready.value) await start();
-    if (!_ready.value) return false;
-    final loaded = Completer<RewardedAd?>();
-    RewardedAd.load(
-      adUnitId: AdUnits.rewarded,
-      request: const AdRequest(),
-      rewardedAdLoadCallback: RewardedAdLoadCallback(
-        onAdLoaded: loaded.complete,
-        onAdFailedToLoad: (error) {
-          debugPrint('Rewarded ad failed to load: ${error.message}');
-          loaded.complete(null);
-        },
-      ),
-    );
-    final ad = await loaded.future
-        .timeout(const Duration(seconds: 15), onTimeout: () => null);
-    if (ad == null) return false;
-
-    final closed = Completer<void>();
-    var earned = false;
-    ad.fullScreenContentCallback = FullScreenContentCallback(
-      onAdDismissedFullScreenContent: (ad) {
-        ad.dispose();
-        closed.complete();
-      },
-      onAdFailedToShowFullScreenContent: (ad, error) {
-        ad.dispose();
-        closed.complete();
-      },
-    );
-    await ad.show(onUserEarnedReward: (_, __) => earned = true);
-    await closed.future;
-    return earned;
   }
 
   @override

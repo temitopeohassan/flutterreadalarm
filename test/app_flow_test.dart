@@ -316,6 +316,25 @@ void main() {
     await close(tester, state);
   });
 
+  testWidgets('60-minute sessions open the paywall on the free plan',
+      (tester) async {
+    final (state, _) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Read 30 min');
+
+    // Drag the duration slider to its last stop, 60 minutes.
+    final slider = find.byType(Slider);
+    await tester.drag(slider, const Offset(400, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('ReadAlarm Premium'), findsOneWidget);
+    expect(find.textContaining('Watch'), findsNothing, reason: 'no ad offer');
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('60 min'), findsNothing);
+    await close(tester, state);
+  });
+
   testWidgets('a free user can switch on only one alarm', (tester) async {
     final (state, fakes) = await demoState();
     await tester.pumpWidget(ReadAlarmApp(state: state));

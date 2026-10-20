@@ -32,14 +32,6 @@ void main() {
       state.dispose();
     });
 
-    test('rewarded unlock grants 60-minute access', () async {
-      final (state, _) = await demoState();
-      expect(state.has60MinAccess, isFalse);
-      state.unlockRewarded();
-      expect(state.has60MinAccess, isTrue);
-      state.dispose();
-    });
-
     test('everything survives a restart', () async {
       final (state, fakes) = await demoState();
       state
