@@ -162,6 +162,16 @@ class FakePermissions implements PermissionService {
 
   @override
   Future<void> openAppSettings() async {}
+
+  /// What [openAutoStartSettings] finds on this "phone".
+  AutoStartPage autoStartPage = AutoStartPage.autoStart;
+  int autoStartOpened = 0;
+
+  @override
+  Future<AutoStartPage> openAutoStartSettings() async {
+    autoStartOpened++;
+    return autoStartPage;
+  }
 }
 
 class FakePlayback implements PlaybackService {

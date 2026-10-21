@@ -5,6 +5,7 @@ import 'package:readalarm/models/reading_alarm.dart';
 import 'package:readalarm/screens/main_shell.dart';
 import 'package:readalarm/services/alarm_scheduler.dart';
 import 'package:readalarm/services/billing_service.dart';
+import 'package:readalarm/services/permission_service.dart';
 import 'package:readalarm/services/book_importer.dart';
 import 'package:readalarm/state/app_state.dart';
 
@@ -46,9 +47,21 @@ void main() {
     expect(fakes.permissions.requested, ['notifications', 'exactAlarm']);
     expect(state.permissions['battery'], isFalse);
 
-    // The phone's brand guide is preselected (fakes report a Tecno).
-    expect(find.text('Open Phone Master (or Settings → Battery).'),
-        findsOneWidget);
+    // The phone's brand guide is preselected (fakes report a Tecno), and
+    // the button opens the maker's auto-start page, not Android's app info.
+    expect(
+        find.textContaining('Phone Master\'s Auto-start list'), findsOneWidget);
+    await tapText(tester, 'Open auto-start settings');
+    expect(fakes.permissions.autoStartOpened, 1);
+    expect(find.byType(SnackBar), findsNothing);
+
+    // Only Phone Master's home screen found: say where to look.
+    fakes.permissions.autoStartPage = AutoStartPage.phoneManager;
+    await tapText(tester, 'Open auto-start settings');
+    expect(
+        find.textContaining('Look for Auto-start management'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5)); // Let the message go.
+    await tester.pumpAndSettle();
     await tapText(tester, 'I\'ve done this');
     expect(state.autoStartConfirmed, isTrue);
 
