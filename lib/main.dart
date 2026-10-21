@@ -120,7 +120,10 @@ class _ReadAlarmAppState extends State<ReadAlarmApp>
           durationMin: alarm.durationMin);
     } else {
       navigator.push(MaterialPageRoute<void>(
-        builder: (_) => ReadingReminderScreen(alarm: alarm),
+        builder: (_) => ReadingReminderScreen(
+          alarm: alarm,
+          autoStartAfter: ReadingReminderScreen.autoStartDelay,
+        ),
       ));
     }
   }

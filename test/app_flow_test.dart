@@ -185,6 +185,56 @@ void main() {
     await close(tester, state);
   });
 
+  testWidgets('a ringing alarm starts reading by itself after 30 seconds',
+      (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+    final alarm = state.alarms.first;
+    fakes.alarms
+        .onLaunch!(AlarmLaunch(AlarmPayload.forAlarm(alarm), AlarmAction.open));
+    await tester.pumpAndSettle();
+    expect(find.text('Reading starts by itself in 30 s'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 10));
+    expect(find.text('Reading starts by itself in 20 s'), findsOneWidget);
+    expect(state.reader.active, isFalse);
+
+    await tester.pump(const Duration(seconds: 20));
+    await tester.pumpAndSettle();
+    expect(state.reader.active, isTrue);
+    expect(fakes.alarms.dismissed, [alarm.id], reason: 'the ringing stops');
+    expect(find.text('Alarm session'), findsOneWidget);
+    await close(tester, state);
+  });
+
+  testWidgets('snoozing stops the countdown; a preview has none',
+      (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+
+    // The preview from Home never starts by itself.
+    await tester.tap(find.byTooltip('Preview alarm screen'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('starts by itself'), findsNothing);
+    await tester.pump(const Duration(seconds: 40));
+    expect(state.reader.active, isFalse);
+    await tester.tap(find.byTooltip('Dismiss'));
+    await tester.pumpAndSettle();
+
+    final alarm = state.alarms.first;
+    fakes.alarms
+        .onLaunch!(AlarmLaunch(AlarmPayload.forAlarm(alarm), AlarmAction.open));
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Snooze 10 min');
+    await tester.pump(const Duration(seconds: 40));
+    await tester.pumpAndSettle();
+    expect(state.reader.active, isFalse);
+    expect(fakes.alarms.once, hasLength(1), reason: 'snoozed');
+    await close(tester, state);
+  });
+
   testWidgets('snoozing a ringing alarm rings again in 10 minutes',
       (tester) async {
     final (state, fakes) = await demoState();
