@@ -11,10 +11,15 @@ import 'services/services.dart';
 import 'state/app_state.dart';
 import 'theme/app_theme.dart';
 
+/// CI's emulator check builds with this on, to start past onboarding
+/// (where ads and billing start). Never set in builds for people.
+const _skipOnboarding = bool.fromEnvironment('READALARM_SKIP_ONBOARDING');
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   AdsService.instance = MobileAdsService();
   final state = await AppState.load(await AppServices.device());
+  if (_skipOnboarding && !state.onboardingDone) state.completeOnboarding();
   runApp(ReadAlarmApp(state: state));
 }
 
