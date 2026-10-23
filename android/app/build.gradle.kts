@@ -64,6 +64,8 @@ android {
         release {
             signingConfig = signingConfigs.findByName("upload")
                 ?: signingConfigs.getByName("debug")
+            // Keeps code R8 can't see is used (see the file).
+            proguardFiles("proguard-rules.pro")
         }
     }
 }
