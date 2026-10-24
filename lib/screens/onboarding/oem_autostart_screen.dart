@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../services/permission_service.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
@@ -82,6 +83,14 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
             'No separate auto-start page was found on this phone. Open '
             'Battery and allow ReadAlarm to run in the background.');
     }
+  }
+
+  Future<void> _copyReport(AppState state) async {
+    final report = await state.services.permissions.autoStartReport();
+    await Clipboard.setData(
+        ClipboardData(text: 'ReadAlarm auto-start\n$report'));
+    if (!mounted) return;
+    showSnack(context, 'Phone details copied. Paste them to support.');
   }
 
   @override
@@ -176,11 +185,15 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
         ),
         Align(
           alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: () => _openAutoStart(state),
-            icon: const Icon(Icons.open_in_new_rounded, size: 18),
-            label: const Text('Open auto-start settings'),
-            style: TextButton.styleFrom(foregroundColor: AppColors.orange),
+          // Long press: copy what this phone has, to send to support.
+          child: GestureDetector(
+            onLongPress: () => _copyReport(state),
+            child: TextButton.icon(
+              onPressed: () => _openAutoStart(state),
+              icon: const Icon(Icons.open_in_new_rounded, size: 18),
+              label: const Text('Open auto-start settings'),
+              style: TextButton.styleFrom(foregroundColor: AppColors.orange),
+            ),
           ),
         ),
         const SizedBox(height: 12),

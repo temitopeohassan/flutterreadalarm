@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/main.dart';
 import 'package:readalarm/models/reading_alarm.dart';
@@ -548,6 +549,42 @@ void main() {
     await tapText(tester, 'Continue reading');
     expect(find.text('You\'ve used today\'s 15 free minutes'), findsOneWidget);
     expect(state.reader.active, isFalse);
+    await close(tester, state);
+  });
+
+  testWidgets('confirming auto-start from Settings stays confirmed',
+      (tester) async {
+    final (state, fakes) = await demoState();
+    state.autoStartConfirmed = false;
+    await state.refreshPermissions();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tapText(tester, 'Settings');
+    expect(find.text('Needs attention'), findsOneWidget);
+
+    await tapText(tester, 'Fix');
+    // Long press copies the phone's details for support.
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copied.add((call.arguments as Map)['text'] as String);
+      }
+      return null;
+    });
+    await tester.scrollUntilVisible(find.text('Open auto-start settings'), 200,
+        scrollable: find.byType(Scrollable).last);
+    await tester.longPress(find.text('Open auto-start settings'));
+    await tester.pumpAndSettle();
+    expect(copied.single, contains('TECNO'));
+    await tester.pump(const Duration(seconds: 5)); // Let the message go.
+    await tester.pumpAndSettle();
+
+    await tapText(tester, 'I\'ve done this');
+    expect(state.permissions['autoStart'], isTrue);
+    await tester.pump();
+    // Saved, so it's still confirmed after a restart.
+    final saved = await fakes.storage.loadState();
+    expect(saved!['autoStartConfirmed'], isTrue);
     await close(tester, state);
   });
 

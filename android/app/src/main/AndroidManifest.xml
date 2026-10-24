@@ -82,6 +82,9 @@
     <queries>
         <!-- Phone-manager apps with the auto-start setting (MainActivity). -->
         <package android:name="com.transsion.phonemaster" />
+        <package android:name="com.transsion.phonemanager" />
+        <package android:name="com.transsion.settings" />
+        <package android:name="com.android.settings" />
         <package android:name="com.itel.autobootmanager" />
         <package android:name="com.miui.securitycenter" />
         <package android:name="com.coloros.safecenter" />

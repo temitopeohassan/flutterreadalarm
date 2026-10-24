@@ -20,6 +20,9 @@ abstract class PermissionService {
 
   /// Opens the phone maker's auto-start setting, or the closest page found.
   Future<AutoStartPage> openAutoStartSettings();
+
+  /// For support: the phone's model and the auto-start screens found on it.
+  Future<String> autoStartReport();
 }
 
 /// Which page [PermissionService.openAutoStartSettings] opened.
@@ -85,6 +88,15 @@ class AndroidPermissionService implements PermissionService {
     }
     await openAppSettingsPage();
     return AutoStartPage.appInfo;
+  }
+
+  @override
+  Future<String> autoStartReport() async {
+    try {
+      return await _autoStart.invokeMethod<String>('report') ?? '';
+    } catch (e) {
+      return 'No report: $e';
+    }
   }
 }
 

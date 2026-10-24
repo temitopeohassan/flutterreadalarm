@@ -172,6 +172,9 @@ class FakePermissions implements PermissionService {
     autoStartOpened++;
     return autoStartPage;
   }
+
+  @override
+  Future<String> autoStartReport() async => 'TECNO KI5q, Android 13';
 }
 
 class FakePlayback implements PlaybackService {
