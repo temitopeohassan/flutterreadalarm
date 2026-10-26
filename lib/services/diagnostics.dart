@@ -14,7 +14,7 @@ class Diagnostics {
   static const _channel = MethodChannel('readalarm/diagnostics');
 
   /// Where "Send report" addresses the email.
-  static const reportEmail = 'temitope.hassam.2@gmail.com';
+  static const reportEmail = 'temitope.hassan.2@gmail.com';
 
   /// The diagnostics bar shows on every screen in builds made with
   /// --dart-define=READALARM_DIAGNOSTICS=true.
