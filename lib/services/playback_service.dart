@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'event_log.dart';
 
 /// Keeps the app alive while a book is being read, so reading continues
 /// with the screen locked, and shows lock-screen controls.
@@ -115,11 +116,13 @@ class ForegroundPlaybackService implements PlaybackService {
       // wake lock) Android may pause reading once the screen locks.
       if (result case ServiceRequestFailure(:final error)) {
         debugPrint('Playback service failed to start: $error');
+        logEvent('ERROR background reading service did not start: $error');
         problem.value = '$error';
       } else {
         problem.value = null;
       }
     } catch (e) {
+      logEvent('ERROR background reading service unavailable: $e');
       problem.value = '$e';
       // Reading still works in the foreground without the service.
       debugPrint('Playback service unavailable: $e');

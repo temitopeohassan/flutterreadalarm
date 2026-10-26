@@ -18,6 +18,29 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "readalarm/diagnostics")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "phone" -> result.success(Diagnostics.phone(this) + "\n\nAUTO-START\n" + report())
+                    "registered" -> {
+                        val ids = call.argument<List<Int>>("ids") ?: emptyList()
+                        result.success(ids.map { Diagnostics.isRegistered(this, it) })
+                    }
+                    "logcat" -> Thread {
+                        val text = Diagnostics.logcat(call.argument<Int>("lines") ?: 400)
+                        runOnUiThread { result.success(text) }
+                    }.start()
+                    "email" -> result.success(
+                        Diagnostics.email(
+                            this,
+                            call.argument<String>("to") ?: "",
+                            call.argument<String>("subject") ?: "",
+                            call.argument<String>("body") ?: "",
+                        ),
+                    )
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     /**

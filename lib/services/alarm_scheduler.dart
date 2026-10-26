@@ -115,6 +115,19 @@ abstract class AlarmScheduler {
 const _onceSlot = 7;
 const _snoozeSlot = 8;
 
+/// The notification ids [alarm] rings under, by label (e.g. 'Mon',
+/// 'Once', 'Snooze'), for diagnostics.
+Map<String, int> alarmNotificationIds(ReadingAlarm alarm) {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  final slots = alarm.repeatDays.isEmpty
+      ? {'Once': _onceSlot}
+      : {for (final d in alarm.repeatDays.toList()..sort()) days[d]: d};
+  return {
+    for (final e in slots.entries) e.key: _notificationId(alarm.id, e.value),
+    'Snooze': _notificationId(alarm.id, _snoozeSlot),
+  };
+}
+
 int _notificationId(String alarmId, int slot) {
   var hash = 0x811c9dc5; // FNV-1a
   for (final unit in alarmId.codeUnits) {

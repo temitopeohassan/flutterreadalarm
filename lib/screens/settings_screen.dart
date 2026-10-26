@@ -6,6 +6,7 @@ import '../theme/app_colors.dart';
 import '../widgets/common.dart';
 import '../widgets/navy_header.dart';
 import 'onboarding/oem_autostart_screen.dart';
+import 'diagnostics_screen.dart';
 import 'paywall_screen.dart';
 
 /// Screen — Settings: Premium, voice, permission health, privacy, purchases
@@ -209,6 +210,14 @@ class SettingsScreen extends StatelessWidget {
                                 )
                               : const SizedBox.shrink(),
                         ),
+                      ListTile(
+                        leading: const Icon(Icons.bug_report_outlined,
+                            color: AppColors.navy),
+                        title: const Text('Send a problem report'),
+                        subtitle: const Text(
+                            'Alarm and phone details, to help fix problems'),
+                        onTap: () => DiagnosticsScreen.open(context),
+                      ),
                       ListTile(
                         leading: const Icon(Icons.info_outline_rounded,
                             color: AppColors.navy),

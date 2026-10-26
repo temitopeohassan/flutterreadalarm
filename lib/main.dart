@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'models/reading_alarm.dart';
 import 'screens/main_shell.dart';
 import 'screens/now_playing_screen.dart';
@@ -7,6 +8,7 @@ import 'screens/onboarding/onboarding_flow.dart';
 import 'screens/reading_reminder_screen.dart';
 import 'services/ads_service.dart';
 import 'services/alarm_scheduler.dart';
+import 'services/event_log.dart';
 import 'services/services.dart';
 import 'state/app_state.dart';
 import 'theme/app_theme.dart';
@@ -17,6 +19,18 @@ const _skipOnboarding = bool.fromEnvironment('READALARM_SKIP_ONBOARDING');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  EventLog.instance = await EventLog.open();
+  // Errors go to the log too, for diagnostics reports.
+  final onFlutterError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    logEvent('ERROR ${details.exceptionAsString()}');
+    onFlutterError?.call(details);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    logEvent(
+        'ERROR $error\n${stack.toString().split('\n').take(8).join('\n')}');
+    return false;
+  };
   AdsService.instance = MobileAdsService();
   final state = await AppState.load(await AppServices.device());
   if (_skipOnboarding && !state.onboardingDone) state.completeOnboarding();
@@ -65,6 +79,10 @@ class _ReadAlarmAppState extends State<ReadAlarmApp>
   /// permissions granted in system settings.
   @override
   void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
+    if (lifecycle == AppLifecycleState.resumed ||
+        lifecycle == AppLifecycleState.paused) {
+      logEvent('App ${lifecycle.name}');
+    }
     if (lifecycle == AppLifecycleState.resumed) {
       widget.state
           .reloadFromStorage()

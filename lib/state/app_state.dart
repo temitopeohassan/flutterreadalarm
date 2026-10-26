@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../models/reading_alarm.dart';
 import '../services/alarm_scheduler.dart';
 import '../services/billing_service.dart';
+import '../services/event_log.dart';
 import '../services/book_importer.dart';
 import '../services/book_text.dart';
 import '../services/permission_service.dart';
@@ -99,6 +100,10 @@ class AppState extends ChangeNotifier {
     await state._applyFreeAlarmLimit();
     await state._syncAlarms();
     final launch = await services.alarms.takeLaunch();
+    logEvent('App started${launch == null ? '' : ' by alarm '
+            '${launch.payload.alarmId} (${launch.action.name})'}. '
+        '${state.alarms.where((a) => a.enabled).length} alarm(s) on, '
+        'Premium: ${state.isPremium}');
     if (launch != null) state.openAlarm(launch);
     return state;
   }
@@ -295,6 +300,8 @@ class AppState extends ChangeNotifier {
 
   void _onBilling(BillingEvent event) {
     if (_disposed) return;
+    logEvent('Purchase ${event.kind.name} ${event.productId ?? ''} '
+        '${event.message ?? ''}');
     switch (event.kind) {
       case BillingEventKind.purchased:
         if (!purchased) billingNotice.value = 'Welcome to Premium!';
@@ -342,8 +349,19 @@ class AppState extends ChangeNotifier {
       debugPrint('Permission check failed: $e');
     }
     permissions['autoStart'] = autoStartConfirmed;
+    final missing = [
+      for (final e in permissions.entries)
+        if (!e.value) e.key,
+    ];
+    if (missing.join() != _lastMissing) {
+      _lastMissing = missing.join();
+      logEvent('Permissions: ${missing.isEmpty ? 'all OK' : 'missing '
+          '${missing.join(', ')}'}');
+    }
     if (!_disposed) notifyListeners();
   }
+
+  String? _lastMissing;
 
   Future<void> requestPermission(String key) async {
     if (key == 'autoStart') {
@@ -510,6 +528,7 @@ class AppState extends ChangeNotifier {
     try {
       await services.alarms.schedule(alarm);
     } catch (e) {
+      logEvent('ERROR scheduling alarm ${alarm.id}: $e');
       debugPrint('Scheduling alarm failed: $e');
     }
   }
@@ -527,10 +546,15 @@ class AppState extends ChangeNotifier {
       if (!a.enabled || a.repeatDays.isNotEmpty) continue;
       final once = a.onceAt;
       final rang = once != null ? !once.isAfter(now) : !pending.contains(a.id);
-      if (rang) alarms[i] = a.copyWith(enabled: false);
+      if (rang) {
+        alarms[i] = a.copyWith(enabled: false);
+        logEvent('One-off alarm ${a.id} has passed: switched off');
+      }
     }
     for (final alarm in alarms.where((a) => a.enabled)) {
       await _schedule(alarm);
+      logEvent('Alarm ${alarm.id} set: ${formatTime(alarm.time)} '
+          '${alarm.scheduleLabel}, next ${alarm.nextOccurrence(now)}');
     }
     _changed();
   }
@@ -556,14 +580,19 @@ class AppState extends ChangeNotifier {
       ),
       DateTime.now().add(const Duration(minutes: 1)),
     );
+    logEvent('Test alarm set for 1 minute from now');
     return true;
   }
 
   /// Handles a ringing alarm the user opened or acted on.
   void openAlarm(AlarmLaunch launch) {
     final p = launch.payload;
+    logEvent('Alarm ${p.alarmId} opened (${launch.action.name})');
     final book = _findBook(p.bookId);
-    if (book == null) return;
+    if (book == null) {
+      logEvent('Alarm ${p.alarmId}: its book is no longer in the library');
+      return;
+    }
     final known = alarms.where((a) => a.id == p.alarmId).firstOrNull;
     final alarm = known ??
         ReadingAlarm(
@@ -585,9 +614,11 @@ class AppState extends ChangeNotifier {
   /// Stops a ringing alarm's sound and notification, keeping its future
   /// rings.
   Future<void> silenceAlarm(ReadingAlarm alarm) async {
+    logEvent('Alarm ${alarm.id} silenced');
     try {
       await services.alarms.dismiss(alarm.id);
     } catch (e) {
+      logEvent('ERROR silencing alarm ${alarm.id}: $e');
       debugPrint('Dismissing alarm failed: $e');
     }
     // Make sure a weekly alarm still rings next time.
@@ -598,6 +629,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> snoozeAlarm(ReadingAlarm alarm) async {
+    logEvent('Alarm ${alarm.id} snoozed');
     await silenceAlarm(alarm);
     await services.alarms.scheduleOnce(
       AlarmPayload.forAlarm(alarm),
@@ -807,7 +839,10 @@ class ReadingController extends ChangeNotifier {
   /// [book]: an alarm can carry an older copy of the book (for example
   /// when it reaches an instance of the app that was in the background).
   Future<ReadingStart> start(BookInfo book, {int? durationMin}) async {
-    if (_state.dailyLimitReached) return ReadingStart.dailyLimit;
+    if (_state.dailyLimitReached) {
+      logEvent('Reading refused: today\'s free minutes are used up');
+      return ReadingStart.dailyLimit;
+    }
     if (!active) {
       await _state.reloadFromStorage();
       book = _state.findBook(book.id) ?? book;
@@ -820,6 +855,7 @@ class ReadingController extends ChangeNotifier {
     if (active) await finish('stop');
     final loaded = await _state.textFor(book.id);
     if (loaded == null || loaded.sentences.isEmpty) {
+      logEvent('Reading refused: no text for "${book.title}"');
       return ReadingStart.missingText;
     }
 
@@ -834,6 +870,8 @@ class ReadingController extends ChangeNotifier {
     _progressBefore = book.isFinished ? 0 : book.progress;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     resume();
+    logEvent('Reading started: "${book.title}" at sentence $index of '
+        '${loaded.sentences.length}, ${durationMin ?? 'no'} min limit');
     return ReadingStart.started;
   }
 
@@ -1007,6 +1045,8 @@ class ReadingController extends ChangeNotifier {
 
     final read = _banked;
     final minutes = math.max(1, (read.inSeconds / 60).ceil());
+    logEvent('Reading ended ($reason) after ${read.inSeconds}s at sentence '
+        '$index');
     final book = _state.findBook(id);
     if (book != null && read > Duration.zero) {
       _state.addSession(ReadingSession(

@@ -74,10 +74,22 @@ jobs:
           ORG_GRADLE_PROJECT_admobAppId: ${{ secrets.ADMOB_APP_ID }}
         run: flutter build apk --release --split-per-abi $AD_ARGS
 
+      # The same app with a "Generate Report" bar on every screen, for
+      # finding out why alarms don't ring on a particular phone.
+      - name: Build diagnostics APK
+        env:
+          ORG_GRADLE_PROJECT_admobAppId: ${{ secrets.ADMOB_APP_ID }}
+        run: |
+          flutter build apk --release $AD_ARGS --dart-define=READALARM_DIAGNOSTICS=true
+          mkdir -p diagnostics
+          cp build/app/outputs/flutter-apk/app-release.apk diagnostics/readalarm-diagnostics.apk
+
       - name: Build universal release APK
         env:
           ORG_GRADLE_PROJECT_admobAppId: ${{ secrets.ADMOB_APP_ID }}
-        run: flutter build apk --release $AD_ARGS
+        run: |
+          flutter build apk --release $AD_ARGS
+          cp diagnostics/readalarm-diagnostics.apk build/app/outputs/flutter-apk/
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
@@ -136,6 +148,7 @@ jobs:
           script: |
             bash .github/scripts/launch_check.sh apks/app-release.apk fresh-install 30
             bash .github/scripts/launch_check.sh apks/past-onboarding.apk past-onboarding 45
+            bash .github/scripts/launch_check.sh apks/readalarm-diagnostics.apk diagnostics 30
 
       - name: Upload logs
         if: always()
