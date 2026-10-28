@@ -8,7 +8,7 @@ plugins {
 
 // Play Store builds are signed with your upload key, described by
 // android/key.properties (never committed; see README). Without it the
-// release build is signed with the debug key, fine for test installs.
+// release build is signed with the test key (see signingConfigs).
 val keyProperties = Properties().apply {
     val file = rootProject.file("key.properties")
     if (file.exists()) file.inputStream().use { stream -> load(stream) }
@@ -50,6 +50,16 @@ android {
     }
 
     signingConfigs {
+        // Test builds (CI's APKs) are all signed with this one key, so each
+        // new APK installs over the last. It is not secret and must never
+        // sign a Play Store build: those use the upload key below.
+        create("test") {
+            storeFile = file("test-signing.p12")
+            storeType = "PKCS12"
+            storePassword = "readalarm-test"
+            keyAlias = "test"
+            keyPassword = "readalarm-test"
+        }
         if (keyProperties.isNotEmpty()) {
             create("upload") {
                 storeFile = file(keyProperties.getProperty("storeFile"))
@@ -63,7 +73,7 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.findByName("upload")
-                ?: signingConfigs.getByName("debug")
+                ?: signingConfigs.getByName("test")
             // Keeps code R8 can't see is used (see the file).
             proguardFiles("proguard-rules.pro")
         }

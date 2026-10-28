@@ -110,9 +110,11 @@ on pull requests, and on demand (**Actions → Flutter CI → Run workflow**):
 | Build APK | Release APKs (per-ABI and universal), uploaded as the `readalarm-apks-<sha>` artifact |
 | Regenerate screenshots | Runs `screenshot_test` and uploads the PNGs as `readalarm-screenshots-<sha>` |
 
-Download the APKs from the run's **Artifacts** section. CI builds are signed
-with the debug key, fine for installing directly but not for Play: build the
-Play bundle locally with your upload key (see above).
+Download the APKs from the run's **Artifacts** section. CI builds are all
+signed with the same test key (`android/app/test-signing.p12`, not secret), so
+each new APK installs over the last. Never use it for Play: build the Play
+bundle with your upload key (see above). `readalarm-diagnostics.apk` adds a
+"Generate Report" bar for sending diagnostics.
 
 ## Screenshots
 

@@ -91,6 +91,14 @@ jobs:
           flutter build apk --release $AD_ARGS
           cp diagnostics/readalarm-diagnostics.apk build/app/outputs/flutter-apk/
 
+      # Every test APK must carry the same signature, or Android refuses
+      # to install it over the last one ("App not installed").
+      - name: Show the signing certificate
+        run: |
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          "$apksigner" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | grep -i sha-256
+          "$apksigner" verify --print-certs build/app/outputs/flutter-apk/readalarm-diagnostics.apk | grep -i sha-256
+
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
