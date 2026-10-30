@@ -19,11 +19,8 @@ class SettingsScreen extends StatelessWidget {
     'notifications': ('Notifications', 'Lock-screen reading controls'),
     'exactAlarm': ('Alarms and reminders', 'Start on the exact minute'),
     'battery': ('Background reading', 'Not stopped by battery saver'),
-    'autoStart': ('Auto-start', 'Phone brand settings'),
-    'recentsLock': (
-      'Locked in recent apps',
-      'Not closed by the phone\'s cleaner'
-    ),
+    'autoStart': ('Auto-start', 'Confirmed by the alarm test'),
+    'recentsLock': ('Locked in recent apps', 'Confirmed by the alarm test'),
     'alarmTest': ('Alarm test', 'An alarm opens ReadAlarm when it\'s closed'),
   };
 

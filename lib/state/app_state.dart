@@ -70,18 +70,22 @@ class AppState extends ChangeNotifier {
   String _freeReadDay = '';
   Duration _freeReadToday = Duration.zero;
 
-  /// The user confirmed following the phone-brand auto-start guide.
+  /// The user went through the phone-brand auto-start guide (not proof:
+  /// see [alarmSetupDone]).
   bool autoStartConfirmed = false;
 
-  /// The user confirmed locking ReadAlarm in recent apps.
+  /// The user went through the recent-apps lock step (not proof: see
+  /// [alarmSetupDone]).
   bool recentsLockConfirmed = false;
 
   /// Version of setup. Users who finished an older one go through it again
   /// (2: auto-start, the recent-apps lock and the alarm test).
   static const onboardingVersion = 2;
 
-  /// Alarms can be set only after the two phone settings alarms depend on.
-  bool get alarmSetupDone => autoStartConfirmed && recentsLockConfirmed;
+  /// Alarms can be set only once the alarm test has passed (and the phone
+  /// hasn't removed an alarm since): that's what confirms auto-start and
+  /// the recent-apps lock. Tapping through those steps doesn't.
+  bool get alarmSetupDone => alarmsVerified;
 
   /// Onboarding page to resume at (the alarm test closes the app).
   int onboardingStep = 0;
@@ -458,10 +462,15 @@ class AppState extends ChangeNotifier {
 
   /// The checks Android can't answer: the user's confirmations, and the
   /// alarm test's result.
+  ///
+  /// Auto-start and the recent-apps lock count as confirmed only once the
+  /// alarm test passes: Android can't report them, and the user saying so
+  /// isn't proof.
   void _ownChecks() {
-    permissions['autoStart'] = autoStartConfirmed;
-    permissions['recentsLock'] = recentsLockConfirmed;
-    permissions['alarmTest'] = alarmsVerified;
+    final verified = alarmsVerified;
+    permissions['autoStart'] = verified;
+    permissions['recentsLock'] = verified;
+    permissions['alarmTest'] = verified;
   }
 
   Future<void> requestPermission(String key) async {

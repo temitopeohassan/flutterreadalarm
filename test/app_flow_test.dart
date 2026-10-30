@@ -145,12 +145,10 @@ void main() {
     await close(tester, state);
   });
 
-  testWidgets('adding an alarm first asks for the two phone settings',
+  testWidgets('adding an alarm needs the settings and a passed alarm test',
       (tester) async {
-    final (state, _) = await demoState();
-    state
-      ..autoStartConfirmed = false
-      ..recentsLockConfirmed = false;
+    final (state, fakes) = await demoState();
+    state.alarmTestPassedAt = null;
     await tester.pumpWidget(ReadAlarmApp(state: state));
     await tester.pumpAndSettle();
 
@@ -160,19 +158,30 @@ void main() {
 
     await tapText(tester, 'Turn on auto-start');
     await tapText(tester, 'I\'ve done this');
-    // Still missing the lock: asked again.
-    expect(find.text('Finish alarm setup first'), findsOneWidget);
     await tapText(tester, 'Lock in recent apps');
     await tapText(tester, 'I\'ve locked it');
-    // Both done: the editor opens (or the free-plan paywall).
-    expect(find.text('Finish alarm setup first'), findsNothing);
+    // Both tapped through, but not confirmed until the test passes.
+    expect(find.text('Finish alarm setup first'), findsOneWidget);
+    expect(state.alarmSetupDone, isFalse);
+
+    await tapText(tester, 'Run the alarm test');
+    await tapText(tester, 'Start test');
+    await tester.pump(const Duration(seconds: 1));
+    fakes.alarms.onLaunch!(
+        AlarmLaunch(fakes.alarms.once.last.$1, AlarmAction.open, cold: true));
+    await tester.pumpAndSettle();
+    // After setup the test alarm also opens the reminder; close it.
+    Navigator.of(tester.element(find.text('Reading reminder'))).pop();
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Continue');
     expect(state.alarmSetupDone, isTrue);
+    expect(find.text('Finish alarm setup first'), findsNothing);
     await close(tester, state);
   });
 
   testWidgets('"Not now" sets no alarm', (tester) async {
     final (state, fakes) = await demoState();
-    state.recentsLockConfirmed = false;
+    state.alarmTestPassedAt = null;
     await tester.pumpWidget(ReadAlarmApp(state: state));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(Switch).last); // the alarm that's off
@@ -677,16 +686,25 @@ void main() {
     await close(tester, state);
   });
 
-  testWidgets('confirming auto-start from Settings stays confirmed',
+  testWidgets('auto-start from Settings is confirmed only by the alarm test',
       (tester) async {
     final (state, fakes) = await demoState();
-    state.autoStartConfirmed = false;
+    state
+      ..autoStartConfirmed = false
+      ..alarmTestPassedAt = null;
     await state.refreshPermissions();
     await tester.pumpWidget(ReadAlarmApp(state: state));
     await tapText(tester, 'Settings');
     expect(find.text('Needs attention'), findsOneWidget);
 
-    await tapText(tester, 'Fix');
+    // Scroll past it so its row isn't under the bottom bar.
+    await tester.scrollUntilVisible(find.text('Send a problem report'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.descendant(
+        of: find.ancestor(
+            of: find.text('Auto-start'), matching: find.byType(ListTile)),
+        matching: find.text('Fix')));
+    await tester.pumpAndSettle();
     // Long press copies the phone's details for support.
     final copied = <String>[];
     tester.binding.defaultBinaryMessenger
@@ -705,9 +723,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await tapText(tester, 'I\'ve done this');
-    expect(state.permissions['autoStart'], isTrue);
+    // The step is recorded, but it isn't confirmed until the test passes.
+    expect(state.autoStartConfirmed, isTrue);
+    expect(state.permissions['autoStart'], isFalse);
     await tester.pump();
-    // Saved, so it's still confirmed after a restart.
     final saved = await fakes.storage.loadState();
     expect(saved!['autoStartConfirmed'], isTrue);
     await close(tester, state);

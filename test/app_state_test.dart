@@ -184,10 +184,6 @@ void main() {
     test('permissions come from the device; auto-start from the user',
         () async {
       final (state, fakes) = await demoState();
-      state
-        ..autoStartConfirmed = false
-        ..recentsLockConfirmed = false;
-      await state.refreshPermissions();
       expect(state.allPermissionsGranted, isFalse);
       for (final key in state.permissions.keys.toList()) {
         await state.requestPermission(key);
@@ -542,9 +538,8 @@ void main() {
       again.dispose();
     });
 
-    test('alarms can\'t be set before auto-start and the lock', () async {
+    test('alarms can be set only once the alarm test has passed', () async {
       final (state, fakes) = await demoState();
-      state.autoStartConfirmed = false;
       for (final a in List.of(state.alarms)) {
         await state.deleteAlarm(a);
       }
@@ -555,20 +550,29 @@ void main() {
         durationMin: 15,
         repeatDays: const {0},
       );
+      // Tapping through both settings isn't enough.
+      state
+        ..alarmTestPassedAt = null
+        ..autoStartConfirmed = true
+        ..recentsLockConfirmed = true;
+      await state.refreshPermissions();
+      expect(state.permissions['autoStart'], isFalse);
+      expect(state.permissions['recentsLock'], isFalse);
       expect(
           (await state.saveAlarm(alarm)).status, AlarmSaveStatus.setupNeeded);
       expect(state.alarms, isEmpty);
 
-      state.autoStartConfirmed = true;
-      state.recentsLockConfirmed = false;
-      expect(
-          (await state.saveAlarm(alarm)).status, AlarmSaveStatus.setupNeeded);
-
-      state.recentsLockConfirmed = true;
+      // The test passes (an alarm opened ReadAlarm from closed).
+      await state.startAlarmTest();
+      state.openAlarm(
+          AlarmLaunch(fakes.alarms.once.last.$1, AlarmAction.open, cold: true));
+      expect(state.permissions['autoStart'], isTrue);
+      expect(state.permissions['recentsLock'], isTrue);
       expect((await state.saveAlarm(alarm)).status, AlarmSaveStatus.saved);
       await state.toggleAlarm(state.alarms.single, false);
 
-      state.recentsLockConfirmed = false;
+      // The phone removes an alarm: confirmed no longer, so no switching on.
+      state.alarmsDroppedAt = DateTime.now();
       expect(await state.toggleAlarm(state.alarms.single, true),
           AlarmSaveStatus.setupNeeded);
       expect(state.alarms.single.enabled, isFalse);
