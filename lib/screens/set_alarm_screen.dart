@@ -3,6 +3,7 @@ import '../theme/app_theme.dart';
 import '../models/reading_alarm.dart';
 import '../state/app_state.dart';
 import '../widgets/common.dart';
+import '../widgets/alarm_setup_gate.dart';
 import 'paywall_screen.dart';
 import '../theme/app_colors.dart';
 import '../widgets/book_cover.dart';
@@ -116,6 +117,8 @@ class _SetAlarmScreenState extends State<SetAlarmScreen> {
         Navigator.of(context).pop(true);
       case AlarmSaveStatus.limitReached:
         await PaywallScreen.open(context);
+      case AlarmSaveStatus.setupNeeded:
+        if (await ensureAlarmSetup(context) && mounted) await _save();
       case AlarmSaveStatus.inPast:
         showSnack(context, 'That time has already passed. Pick a later time.');
       case AlarmSaveStatus.clash:

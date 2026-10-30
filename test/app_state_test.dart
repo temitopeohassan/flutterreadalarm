@@ -519,6 +519,64 @@ void main() {
     });
   });
 
+  group('alarm setup', () {
+    test('an update makes setup from an older version run again', () async {
+      final (state, fakes) = await demoState();
+      final json = state.toJson()
+        ..remove('onboardingVersion')
+        ..['onboardingStep'] = 5;
+      state.dispose();
+      await fakes.storage.saveState(json);
+
+      final restored = await AppState.load(fakes.services);
+      expect(restored.onboardingDone, isFalse);
+      expect(restored.onboardingStep, 0);
+      expect(restored.alarms, hasLength(2), reason: 'alarms kept');
+      expect(restored.books, isNotEmpty, reason: 'books kept');
+      restored.completeOnboarding();
+      await pumpEventQueue();
+      restored.dispose();
+
+      final again = await AppState.load(fakes.services);
+      expect(again.onboardingDone, isTrue, reason: 'only once');
+      again.dispose();
+    });
+
+    test('alarms can\'t be set before auto-start and the lock', () async {
+      final (state, fakes) = await demoState();
+      state.autoStartConfirmed = false;
+      for (final a in List.of(state.alarms)) {
+        await state.deleteAlarm(a);
+      }
+      final alarm = ReadingAlarm(
+        id: 'new',
+        time: const TimeOfDay(hour: 21, minute: 0),
+        book: state.books.first,
+        durationMin: 15,
+        repeatDays: const {0},
+      );
+      expect(
+          (await state.saveAlarm(alarm)).status, AlarmSaveStatus.setupNeeded);
+      expect(state.alarms, isEmpty);
+
+      state.autoStartConfirmed = true;
+      state.recentsLockConfirmed = false;
+      expect(
+          (await state.saveAlarm(alarm)).status, AlarmSaveStatus.setupNeeded);
+
+      state.recentsLockConfirmed = true;
+      expect((await state.saveAlarm(alarm)).status, AlarmSaveStatus.saved);
+      await state.toggleAlarm(state.alarms.single, false);
+
+      state.recentsLockConfirmed = false;
+      expect(await state.toggleAlarm(state.alarms.single, true),
+          AlarmSaveStatus.setupNeeded);
+      expect(state.alarms.single.enabled, isFalse);
+      expect(fakes.alarms.scheduled, isEmpty);
+      state.dispose();
+    });
+  });
+
   group('free alarms', () {
     test('without Premium, alarms beyond the free one are switched off',
         () async {

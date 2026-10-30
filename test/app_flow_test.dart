@@ -145,6 +145,44 @@ void main() {
     await close(tester, state);
   });
 
+  testWidgets('adding an alarm first asks for the two phone settings',
+      (tester) async {
+    final (state, _) = await demoState();
+    state
+      ..autoStartConfirmed = false
+      ..recentsLockConfirmed = false;
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.bySemanticsLabel('Add alarm').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Finish alarm setup first'), findsOneWidget);
+
+    await tapText(tester, 'Turn on auto-start');
+    await tapText(tester, 'I\'ve done this');
+    // Still missing the lock: asked again.
+    expect(find.text('Finish alarm setup first'), findsOneWidget);
+    await tapText(tester, 'Lock in recent apps');
+    await tapText(tester, 'I\'ve locked it');
+    // Both done: the editor opens (or the free-plan paywall).
+    expect(find.text('Finish alarm setup first'), findsNothing);
+    expect(state.alarmSetupDone, isTrue);
+    await close(tester, state);
+  });
+
+  testWidgets('"Not now" sets no alarm', (tester) async {
+    final (state, fakes) = await demoState();
+    state.recentsLockConfirmed = false;
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Switch).last); // the alarm that's off
+    await tester.pumpAndSettle();
+    expect(find.text('Finish alarm setup first'), findsOneWidget);
+    await tapText(tester, 'Not now');
+    expect(state.alarms.last.enabled, isFalse);
+    await close(tester, state);
+  });
+
   testWidgets('Home warns until alarms are known to work', (tester) async {
     final (state, fakes) = await demoState();
     state.alarmTestPassedAt = null;

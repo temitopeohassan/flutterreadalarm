@@ -6,6 +6,7 @@ import '../widgets/ad_banner_slot.dart';
 import '../widgets/book_cover.dart';
 import '../widgets/navy_header.dart';
 import 'onboarding/alarm_test_screen.dart';
+import '../widgets/alarm_setup_gate.dart';
 import 'paywall_screen.dart';
 import 'reading_reminder_screen.dart';
 import 'set_alarm_screen.dart';
@@ -19,6 +20,7 @@ class HomeScreen extends StatelessWidget {
   static Future<void> openEditor(BuildContext context,
       {ReadingAlarm? existing, BookInfo? book}) async {
     final state = AppScope.of(context);
+    if (!await ensureAlarmSetup(context) || !context.mounted) return;
     if (existing == null && !state.canAddAlarm) {
       await PaywallScreen.open(context);
       return;
@@ -105,9 +107,13 @@ class HomeScreen extends StatelessWidget {
                               onToggle: (v) async {
                                 final result =
                                     await state.toggleAlarm(alarm, v);
-                                if (result == AlarmSaveStatus.limitReached &&
-                                    context.mounted) {
+                                if (!context.mounted) return;
+                                if (result == AlarmSaveStatus.limitReached) {
                                   await PaywallScreen.open(context);
+                                } else if (result ==
+                                        AlarmSaveStatus.setupNeeded &&
+                                    await ensureAlarmSetup(context)) {
+                                  await state.toggleAlarm(alarm, v);
                                 }
                               },
                             ),

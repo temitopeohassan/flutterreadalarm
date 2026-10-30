@@ -6,9 +6,8 @@ import '../theme/app_colors.dart';
 import '../widgets/common.dart';
 import '../widgets/navy_header.dart';
 import 'onboarding/alarm_test_screen.dart';
-import 'onboarding/oem_autostart_screen.dart';
-import 'onboarding/recents_lock_screen.dart';
 import 'diagnostics_screen.dart';
+import '../widgets/alarm_setup_gate.dart';
 import 'paywall_screen.dart';
 
 /// Screen — Settings: Premium, voice, permission health, privacy, purchases
@@ -36,17 +35,7 @@ class SettingsScreen extends StatelessWidget {
     if (key != 'autoStart' && key != 'recentsLock') {
       return state.requestPermission(key);
     }
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (context) => Scaffold(
-        appBar: AppBar(
-          backgroundColor: AppColors.cream,
-          surfaceTintColor: Colors.transparent,
-        ),
-        body: key == 'autoStart'
-            ? OemAutostartScreen(onNext: () => Navigator.pop(context))
-            : RecentsLockScreen(onNext: () => Navigator.pop(context)),
-      ),
-    ));
+    await openAlarmSetupStep(context, key);
   }
 
   @override

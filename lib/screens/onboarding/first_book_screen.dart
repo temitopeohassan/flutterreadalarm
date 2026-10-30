@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/reading_alarm.dart';
+import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/book_cover.dart';
 import '../../widgets/common.dart';
@@ -16,6 +17,17 @@ class FirstBookScreen extends StatefulWidget {
 
 class _FirstBookScreenState extends State<FirstBookScreen> {
   BookInfo? _book;
+
+  bool _checkedLibrary = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_checkedLibrary) return;
+    _checkedLibrary = true;
+    // Setup done again after an update: the library already has books.
+    _book = AppScope.of(context).lastReadBook;
+  }
 
   Future<void> _import() async {
     final book = await ImportSheet.show(context);

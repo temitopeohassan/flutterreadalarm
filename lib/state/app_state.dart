@@ -76,6 +76,13 @@ class AppState extends ChangeNotifier {
   /// The user confirmed locking ReadAlarm in recent apps.
   bool recentsLockConfirmed = false;
 
+  /// Version of setup. Users who finished an older one go through it again
+  /// (2: auto-start, the recent-apps lock and the alarm test).
+  static const onboardingVersion = 2;
+
+  /// Alarms can be set only after the two phone settings alarms depend on.
+  bool get alarmSetupDone => autoStartConfirmed && recentsLockConfirmed;
+
   /// Onboarding page to resume at (the alarm test closes the app).
   int onboardingStep = 0;
 
@@ -167,6 +174,7 @@ class AppState extends ChangeNotifier {
   Map<String, Object?> toJson() => {
         'version': 1,
         'onboardingDone': onboardingDone,
+        'onboardingVersion': onboardingDone ? onboardingVersion : 0,
         'isPremium': purchased,
         'freeReadDay': _freeReadDay,
         'freeReadSeconds': _freeReadToday.inSeconds,
@@ -187,12 +195,18 @@ class AppState extends ChangeNotifier {
 
   void _restore(Map<String, Object?> json) {
     onboardingDone = json['onboardingDone'] as bool? ?? false;
+    // Setup finished in an older version (without the alarm steps) is
+    // done again, from the start. Books, alarms and progress are kept.
+    final version =
+        json['onboardingVersion'] as int? ?? (onboardingDone ? 1 : 0);
+    final redoSetup = onboardingDone && version < onboardingVersion;
+    if (redoSetup) onboardingDone = false;
     purchased = json['isPremium'] as bool? ?? false;
     _freeReadDay = json['freeReadDay'] as String? ?? '';
     _freeReadToday = Duration(seconds: json['freeReadSeconds'] as int? ?? 0);
     autoStartConfirmed = json['autoStartConfirmed'] as bool? ?? false;
     recentsLockConfirmed = json['recentsLockConfirmed'] as bool? ?? false;
-    onboardingStep = json['onboardingStep'] as int? ?? 0;
+    onboardingStep = redoSetup ? 0 : json['onboardingStep'] as int? ?? 0;
     DateTime? date(String key) => DateTime.tryParse(json[key] as String? ?? '');
     alarmTestPassedAt = date('alarmTestPassedAt');
     alarmTestStartedAt = date('alarmTestStartedAt');
@@ -569,6 +583,9 @@ class AppState extends ChangeNotifier {
   /// Saves an alarm from the editor, enforcing the free alarm limit, one
   /// alarm per moment, and one-off alarms being in the future.
   Future<AlarmSaveResult> saveAlarm(ReadingAlarm alarm) async {
+    if (alarm.enabled && !alarmSetupDone) {
+      return const AlarmSaveResult.setupNeeded();
+    }
     final isNew = !alarms.any((a) => a.id == alarm.id);
     if (isNew && !canAddAlarm) return const AlarmSaveResult.limitReached();
     final once = alarm.onceAt;
@@ -588,6 +605,7 @@ class AppState extends ChangeNotifier {
   /// Switches an alarm on or off. On the free tier only [freeAlarmLimit]
   /// alarms can be on; switching on another returns limitReached.
   Future<AlarmSaveStatus> toggleAlarm(ReadingAlarm alarm, bool enabled) async {
+    if (enabled && !alarmSetupDone) return AlarmSaveStatus.setupNeeded;
     if (enabled &&
         !isPremium &&
         alarms.where((a) => a.enabled && a.id != alarm.id).length >=
@@ -862,6 +880,9 @@ class AlarmSaveResult {
   const AlarmSaveResult.inPast()
       : status = AlarmSaveStatus.inPast,
         clash = null;
+  const AlarmSaveResult.setupNeeded()
+      : status = AlarmSaveStatus.setupNeeded,
+        clash = null;
   const AlarmSaveResult.clash(ReadingAlarm this.clash)
       : status = AlarmSaveStatus.clash;
 
@@ -871,7 +892,15 @@ class AlarmSaveResult {
   final ReadingAlarm? clash;
 }
 
-enum AlarmSaveStatus { saved, limitReached, inPast, clash }
+enum AlarmSaveStatus {
+  saved,
+  limitReached,
+  inPast,
+  clash,
+
+  /// Auto-start or the recent-apps lock isn't done ([AppState.alarmSetupDone]).
+  setupNeeded,
+}
 
 /// A finished reading session, for the Session complete screen.
 class CompletedSession {
