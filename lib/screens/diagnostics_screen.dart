@@ -35,18 +35,28 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
   Future<void> _send() async {
     final sent = await Diagnostics.email(_report!);
-    if (!mounted || sent) return;
-    await Clipboard.setData(ClipboardData(text: _report!));
     if (!mounted) return;
-    showSnack(
-        context,
-        'No email app found. The report is copied: paste it into an email '
-        'to ${Diagnostics.reportEmail}.');
+    switch (sent) {
+      case ReportSent.email:
+        break;
+      case ReportSent.share:
+        showSnack(context,
+            'No email app found, so it\'s shared instead. Send it to ${Diagnostics.reportEmail}.');
+      case null:
+        await _copy(
+            'No email app found. The report is copied: paste it into an '
+            'email to ${Diagnostics.reportEmail}, or into WhatsApp.');
+    }
   }
 
-  Future<void> _copy() async {
+  Future<void> _share() async {
+    if (await Diagnostics.share(_report!)) return;
+    await _copy('Sharing isn\'t available. The report is copied.');
+  }
+
+  Future<void> _copy([String message = 'Report copied.']) async {
     await Clipboard.setData(ClipboardData(text: _report!));
-    if (mounted) showSnack(context, 'Report copied.');
+    if (mounted) showSnack(context, message);
   }
 
   @override
@@ -85,13 +95,24 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               PrimaryButton(
-                label: 'Send report',
-                icon: Icons.send_rounded,
+                label: 'Send report by email',
+                icon: Icons.email_outlined,
                 onPressed: ready ? _send : null,
               ),
-              TextButton(
-                onPressed: ready ? _copy : null,
-                child: const Text('Copy report'),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton.icon(
+                    onPressed: ready ? _share : null,
+                    icon: const Icon(Icons.share_outlined, size: 18),
+                    label: const Text('Share (WhatsApp…)'),
+                  ),
+                  TextButton.icon(
+                    onPressed: ready ? _copy : null,
+                    icon: const Icon(Icons.copy_rounded, size: 18),
+                    label: const Text('Copy'),
+                  ),
+                ],
               ),
             ],
           ),

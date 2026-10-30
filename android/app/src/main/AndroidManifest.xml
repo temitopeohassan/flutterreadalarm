@@ -80,6 +80,11 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- Email apps, for sending diagnostics reports. -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
         <!-- Phone-manager apps with the auto-start setting (MainActivity). -->
         <package android:name="com.transsion.phonemaster" />
         <package android:name="com.transsion.phonemanager" />

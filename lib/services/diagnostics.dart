@@ -197,13 +197,29 @@ class Diagnostics {
     return out;
   }
 
-  /// Opens the phone's email app with [report], addressed to
-  /// [reportEmail]. False if no email app could be opened.
-  static Future<bool> email(String report) async =>
-      await _call<bool>('email', {
-        'to': reportEmail,
+  /// Opens an email app with [report], addressed to [reportEmail]; with
+  /// no email app, the share sheet. Returns how it was sent, or null.
+  static Future<ReportSent?> email(String report) async {
+    final how = await _call<String>('email', {
+      'to': reportEmail,
+      'subject': 'ReadAlarm diagnostics report',
+      'body': report,
+    });
+    return switch (how) {
+      'email' => ReportSent.email,
+      'share' => ReportSent.share,
+      _ => null,
+    };
+  }
+
+  /// The share sheet (WhatsApp and so on) with [report].
+  static Future<bool> share(String report) async =>
+      await _call<bool>('share', {
         'subject': 'ReadAlarm diagnostics report',
         'body': report,
       }) ??
       false;
 }
+
+/// How [Diagnostics.email] sent the report.
+enum ReportSent { email, share }

@@ -87,7 +87,7 @@ void main() {
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'email') sent.add(call.arguments as Map);
       if (call.method == 'phone') return 'PHONE\nModel: TECNO';
-      return call.method == 'email' ? true : null;
+      return call.method == 'email' ? 'email' : null;
     });
     final (state, _) = await demoState();
     await tester.pumpWidget(ReadAlarmApp(state: state));
@@ -97,7 +97,7 @@ void main() {
     await tapText(tester, 'Send a problem report');
     expect(find.textContaining('Model: TECNO'), findsOneWidget);
 
-    await tapText(tester, 'Send report');
+    await tapText(tester, 'Send report by email');
     expect(sent.single['to'], Diagnostics.reportEmail);
     expect(sent.single['body'], contains('READALARM DIAGNOSTICS REPORT'));
     await tester.pumpWidget(const SizedBox());

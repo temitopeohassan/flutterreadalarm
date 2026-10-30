@@ -9,6 +9,7 @@ import android.app.usage.UsageStatsManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import java.text.SimpleDateFormat
@@ -161,19 +162,39 @@ object Diagnostics {
         "Unavailable (${e.javaClass.simpleName}: ${e.message})"
     }
 
-    /** Opens an email app with the report filled in. */
-    fun email(context: Context, to: String, subject: String, body: String): Boolean {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "message/rfc822"
+    /**
+     * Opens an email app with the report filled in, or if there is none,
+     * the share sheet (WhatsApp and so on). Returns "email", "share" or null.
+     */
+    fun email(context: Context, to: String, subject: String, body: String): String? {
+        val send = Intent(Intent.ACTION_SEND).apply {
             putExtra(Intent.EXTRA_EMAIL, arrayOf(to))
             putExtra(Intent.EXTRA_SUBJECT, subject)
             putExtra(Intent.EXTRA_TEXT, body)
+            // Only email apps answer a mailto: link.
+            selector = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"))
         }
-        return try {
-            context.startActivity(Intent.createChooser(intent, "Send report"))
-            true
-        } catch (e: Throwable) {
-            false
+        if (send.resolveActivity(context.packageManager) != null) {
+            try {
+                context.startActivity(Intent.createChooser(send, "Send report by email"))
+                return "email"
+            } catch (e: Throwable) {
+                // Fall through to sharing.
+            }
         }
+        return if (share(context, subject, body)) "share" else null
+    }
+
+    /** The share sheet with the report as text. */
+    fun share(context: Context, subject: String, body: String): Boolean = try {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, subject)
+            putExtra(Intent.EXTRA_TEXT, body)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share report"))
+        true
+    } catch (e: Throwable) {
+        false
     }
 }

@@ -552,6 +552,18 @@ class AppState extends ChangeNotifier {
       }
     }
     for (final alarm in alarms.where((a) => a.enabled)) {
+      // Before setting it again: did Android still hold it? If not, the
+      // phone removed it while the app was away.
+      final held = await services.alarms.heldByAndroid(alarm);
+      if (held != null) {
+        final missing = [
+          for (final e in held.entries)
+            if (!e.value) e.key,
+        ];
+        logEvent('Alarm ${alarm.id} before resetting: Android held '
+            '${held.length - missing.length} of ${held.length} rings'
+            '${missing.isEmpty ? '' : ' (missing ${missing.join(', ')})'}');
+      }
       await _schedule(alarm);
       logEvent('Alarm ${alarm.id} set: ${formatTime(alarm.time)} '
           '${alarm.scheduleLabel}, next ${alarm.nextOccurrence(now)}');
@@ -868,12 +880,16 @@ class ReadingController extends ChangeNotifier {
     lastCompleted = null;
     _startedAt = clock.now();
     _progressBefore = book.isFinished ? 0 : book.progress;
+    _beatMinute = 0;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     resume();
     logEvent('Reading started: "${book.title}" at sentence $index of '
         '${loaded.sentences.length}, ${durationMin ?? 'no'} min limit');
     return ReadingStart.started;
   }
+
+  /// Last minute logged by [_tick]'s heartbeat.
+  int _beatMinute = 0;
 
   void _tick() {
     if (!active || _ending) return;
@@ -888,6 +904,14 @@ class ReadingController extends ChangeNotifier {
       return;
     }
     if (clock.now().second == 0) _updateNotification();
+    // A heartbeat in the diagnostics log: if these stop while reading,
+    // the phone paused the app.
+    final minute = elapsed.inMinutes;
+    if (minute > _beatMinute) {
+      _beatMinute = minute;
+      logEvent('Still reading: sentence $index, $minute min, '
+          '${playing ? 'playing' : 'paused'}');
+    }
     _notify();
   }
 
@@ -981,6 +1005,7 @@ class ReadingController extends ChangeNotifier {
   }
 
   void _onSpeechError(int generation) {
+    logEvent('ERROR text-to-speech reported an error at sentence $index');
     if (generation == _generation) pause();
   }
 

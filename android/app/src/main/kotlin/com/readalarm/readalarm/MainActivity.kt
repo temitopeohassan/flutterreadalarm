@@ -38,6 +38,13 @@ class MainActivity : FlutterActivity() {
                             call.argument<String>("body") ?: "",
                         ),
                     )
+                    "share" -> result.success(
+                        Diagnostics.share(
+                            this,
+                            call.argument<String>("subject") ?: "",
+                            call.argument<String>("body") ?: "",
+                        ),
+                    )
                     else -> result.notImplemented()
                 }
             }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -108,6 +109,11 @@ abstract class AlarmScheduler {
 
   /// Ids of alarms that still have a future ring scheduled.
   Future<Set<String>> pendingAlarmIds();
+
+  /// Whether Android itself holds each of [alarm]'s rings, by day label
+  /// ('Mon', 'Once'), or null if it can't be asked. The plugin's own list
+  /// survives the phone removing the app's alarms; this asks Android.
+  Future<Map<String, bool>?> heldByAndroid(ReadingAlarm alarm);
 }
 
 // Notification ids: each alarm gets a block of 10.
@@ -365,6 +371,24 @@ class NotificationAlarmScheduler implements AlarmScheduler {
 
   @override
   Future<void> dismiss(String alarmId) => _silence(_plugin, alarmId);
+
+  static const _diagnostics = MethodChannel('readalarm/diagnostics');
+
+  @override
+  Future<Map<String, bool>?> heldByAndroid(ReadingAlarm alarm) async {
+    final ids = alarmNotificationIds(alarm)..remove('Snooze');
+    try {
+      final held = await _diagnostics.invokeMethod<List<Object?>>(
+          'registered', {'ids': ids.values.toList()});
+      if (held == null || held.length != ids.length) return null;
+      final labels = ids.keys.toList();
+      return {
+        for (var i = 0; i < labels.length; i++) labels[i]: held[i] == true,
+      };
+    } catch (e) {
+      return null;
+    }
+  }
 
   @override
   Future<Set<String>> pendingAlarmIds() async {

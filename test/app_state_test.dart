@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/models/reading_alarm.dart';
 import 'package:readalarm/services/alarm_scheduler.dart';
 import 'package:readalarm/services/billing_service.dart';
+import 'package:readalarm/services/event_log.dart';
 import 'package:readalarm/services/book_importer.dart';
 import 'package:readalarm/state/app_state.dart';
 
@@ -417,6 +418,17 @@ void main() {
       expect(fakes.alarms.scheduled.keys, ['a1']);
       expect(restored.alarms.first.enabled, isTrue);
       restored.dispose();
+    });
+
+    test('the log records rings Android lost before they are reset', () async {
+      final (state, fakes) = await demoState();
+      fakes.alarms.held['a1'] = {'Mon': true, 'Wed': false, 'Fri': false};
+      await state.resyncAlarms();
+      expect(
+          EventLog.instance.lines
+              .lastWhere((l) => l.contains('before resetting')),
+          contains('Android held 1 of 3 rings (missing Wed, Fri)'));
+      state.dispose();
     });
 
     test('are scheduled again on resync', () async {

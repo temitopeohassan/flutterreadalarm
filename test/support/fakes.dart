@@ -129,6 +129,13 @@ class FakeAlarms implements AlarmScheduler {
   @override
   Future<void> dismiss(String alarmId) async => dismissed.add(alarmId);
 
+  /// What Android reports holding per alarm id; null = can't be asked.
+  final held = <String, Map<String, bool>>{};
+
+  @override
+  Future<Map<String, bool>?> heldByAndroid(ReadingAlarm alarm) async =>
+      held[alarm.id];
+
   @override
   Future<Set<String>> pendingAlarmIds() async =>
       {...scheduled.keys, ...stalePending};
