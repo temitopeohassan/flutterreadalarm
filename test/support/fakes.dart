@@ -129,6 +129,11 @@ class FakeAlarms implements AlarmScheduler {
   @override
   Future<void> dismiss(String alarmId) async => dismissed.add(alarmId);
 
+  int closed = 0;
+
+  @override
+  Future<void> closeApp() async => closed++;
+
   /// What Android reports holding per alarm id; null = can't be asked.
   final held = <String, Map<String, bool>>{};
 
@@ -337,7 +342,11 @@ Future<(AppState, FakeServices)> demoState({
       sessions: SampleData.sessions(),
     )
       ..onboardingDone = onboardingDone
-      ..purchased = premium;
+      ..purchased = premium
+      // A set-up phone: alarms tested, settings confirmed.
+      ..autoStartConfirmed = onboardingDone
+      ..recentsLockConfirmed = onboardingDone
+      ..alarmTestPassedAt = onboardingDone ? DateTime(2026, 1, 1) : null;
     for (final book in seed.books) {
       await fakes.storage.saveBookText(book.id, demoText());
     }
@@ -346,7 +355,11 @@ Future<(AppState, FakeServices)> demoState({
   } else {
     final seed = AppState(services: fakes.services)
       ..onboardingDone = onboardingDone
-      ..purchased = premium;
+      ..purchased = premium
+      // A set-up phone: alarms tested, settings confirmed.
+      ..autoStartConfirmed = onboardingDone
+      ..recentsLockConfirmed = onboardingDone
+      ..alarmTestPassedAt = onboardingDone ? DateTime(2026, 1, 1) : null;
     await fakes.storage.saveState(seed.toJson());
     seed.dispose();
   }

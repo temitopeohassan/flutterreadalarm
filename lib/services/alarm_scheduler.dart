@@ -4,9 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_timezone/flutter_timezone.dart';
-import 'package:timezone/data/latest_all.dart' as tzdata;
-import 'package:timezone/timezone.dart' as tz;
 
 import '../models/reading_alarm.dart';
 
@@ -78,9 +75,13 @@ class AlarmPayload {
 enum AlarmAction { open, start, snooze }
 
 class AlarmLaunch {
-  const AlarmLaunch(this.payload, this.action);
+  const AlarmLaunch(this.payload, this.action, {this.cold = false});
   final AlarmPayload payload;
   final AlarmAction action;
+
+  /// The alarm started the app from closed (proof alarms work on this
+  /// phone even when the app isn't running).
+  final bool cold;
 }
 
 const snoozeDuration = Duration(minutes: 10);
@@ -109,6 +110,10 @@ abstract class AlarmScheduler {
 
   /// Ids of alarms that still have a future ring scheduled.
   Future<Set<String>> pendingAlarmIds();
+
+  /// Closes the app completely, as a phone's power manager might (for the
+  /// alarm test).
+  Future<void> closeApp();
 
   /// Whether Android itself holds each of [alarm]'s rings, by day label
   /// ('Mon', 'Once'), or null if it can't be asked. The plugin's own list
@@ -142,178 +147,71 @@ int _notificationId(String alarmId, int slot) {
   return (hash % 200000000) * 10 + slot;
 }
 
-const _channelId = 'reading_alarms';
-const _actionStart = 'start';
-const _actionSnooze = 'snooze';
-const _initSettings = InitializationSettings(
-  android: AndroidInitializationSettings('ic_stat_readalarm'),
-);
-
-NotificationDetails _alarmDetails() => NotificationDetails(
-      android: AndroidNotificationDetails(
-        _channelId,
-        'Reading alarms',
-        channelDescription: 'Rings when it is time to read',
-        importance: Importance.max,
-        priority: Priority.max,
-        category: AndroidNotificationCategory.alarm,
-        fullScreenIntent: true,
-        audioAttributesUsage: AudioAttributesUsage.alarm,
-        visibility: NotificationVisibility.public,
-        autoCancel: false,
-        ongoing: true,
-        timeoutAfter: const Duration(minutes: 10).inMilliseconds,
-        // FLAG_INSISTENT: keep ringing until the user responds.
-        additionalFlags: Int32List.fromList([4]),
-        actions: const [
-          AndroidNotificationAction(_actionStart, 'Start reading',
-              showsUserInterface: true),
-          AndroidNotificationAction(_actionSnooze, 'Snooze 10 min'),
-        ],
-      ),
-    );
-
-/// Runs in a background isolate when "Snooze" is tapped on the notification.
-@pragma('vm:entry-point')
-Future<void> onBackgroundAlarmAction(NotificationResponse response) async {
-  if (response.actionId != _actionSnooze) return;
-  final payload = AlarmPayload.decode(response.payload);
-  if (payload == null) return;
-  final plugin = FlutterLocalNotificationsPlugin();
-  await plugin.initialize(settings: _initSettings);
-  await _initTimeZones();
-  await _silence(plugin, payload.alarmId, payload: payload);
-  await _snooze(plugin, payload);
-}
-
-Future<void> _initTimeZones() async {
-  tzdata.initializeTimeZones();
-  try {
-    final zone = await FlutterTimezone.getLocalTimezone();
-    tz.setLocalLocation(tz.getLocation(zone.identifier));
-  } catch (_) {
-    // Unknown zone: tz.local stays UTC.
-  }
-}
-
-Future<void> _snooze(
-    FlutterLocalNotificationsPlugin plugin, AlarmPayload payload) {
-  return plugin.zonedSchedule(
-    id: _notificationId(payload.alarmId, _snoozeSlot),
-    scheduledDate: tz.TZDateTime.now(tz.UTC).add(snoozeDuration),
-    notificationDetails: _alarmDetails(),
-    androidScheduleMode: AndroidScheduleMode.alarmClock,
-    title: payload.title,
-    body: payload.body,
-    payload: payload.encode(),
-  );
-}
-
-Future<void> _ringWeekly(FlutterLocalNotificationsPlugin plugin,
-    AlarmPayload payload, int day, DateTime at) {
-  return plugin.zonedSchedule(
-    id: _notificationId(payload.alarmId, day),
-    scheduledDate: tz.TZDateTime.from(at, tz.local),
-    notificationDetails: _alarmDetails(),
-    androidScheduleMode: AndroidScheduleMode.alarmClock,
-    title: payload.title,
-    body: payload.body,
-    payload: payload.encode(),
-    matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-  );
-}
-
-/// Removes the ringing notification(s) of [alarmId], stopping the sound.
-///
-/// Matched by notification id: Android doesn't return a showing
-/// notification's payload, so [payload] (or the scheduled ring's) supplies
-/// the alarm's time. Cancelling a repeating notification also drops its
-/// future repeats, so weekly rings are put back afterwards.
-Future<void> _silence(FlutterLocalNotificationsPlugin plugin, String alarmId,
-    {AlarmPayload? payload}) async {
-  final ids = {
-    for (var slot = 0; slot <= _snoozeSlot; slot++)
-      _notificationId(alarmId, slot),
-  };
-  final active = await plugin.getActiveNotifications();
-  final ringing = [
-    for (final n in active)
-      if (n.id != null && ids.contains(n.id)) n,
-  ];
-  if (ringing.isEmpty) return;
-  var known = payload;
-  if (known?.time == null) {
-    try {
-      for (final r in await plugin.pendingNotificationRequests()) {
-        final p = AlarmPayload.decode(r.payload);
-        if (ids.contains(r.id) && p?.time != null) known = p;
-      }
-    } catch (_) {
-      // No scheduled rings to read: weekly rings are put back by the app.
-    }
-  }
-  for (final n in ringing) {
-    final id = n.id!;
-    await plugin.cancel(id: id, tag: n.tag);
-    final day = id % 10;
-    final time = known?.time;
-    if (day < _onceSlot && known != null && time != null) {
-      final weekly = ReadingAlarm(
-        id: alarmId,
-        time: time,
-        book: BookInfo(id: known.bookId, title: '', coverColors: const []),
-        durationMin: known.durationMin,
-        repeatDays: {day},
-      );
-      await _ringWeekly(
-          plugin, known, day, weekly.nextOccurrence(DateTime.now()));
-    }
-  }
-}
-
+/// Schedules alarms with Android's alarm clock (see AlarmEngine.kt): at
+/// the alarm time Android opens ReadAlarm's screen directly, which works
+/// even when the app was closed, and the app rings.
 class NotificationAlarmScheduler implements AlarmScheduler {
-  final _plugin = FlutterLocalNotificationsPlugin();
+  static const _channel = MethodChannel('readalarm/alarms');
 
   @override
   Future<void> init(void Function(AlarmLaunch launch) onLaunch) async {
-    await _initTimeZones();
-    await _plugin.initialize(
-      settings: _initSettings,
-      onDidReceiveNotificationResponse: (response) async {
-        final launch = _toLaunch(response);
-        if (launch == null) return;
-        if (launch.action == AlarmAction.snooze) {
-          await _silence(_plugin, launch.payload.alarmId,
-              payload: launch.payload);
-          await _snooze(_plugin, launch.payload);
-        } else {
-          onLaunch(launch);
-        }
-      },
-      onDidReceiveBackgroundNotificationResponse: onBackgroundAlarmAction,
-    );
+    _channel.setMethodCallHandler((call) async {
+      if (call.method != 'launch') return;
+      final launch = _toLaunch(call.arguments);
+      if (launch != null) onLaunch(launch);
+    });
+    // Earlier versions scheduled through the notification plugin: remove
+    // those so nothing rings twice.
+    try {
+      final plugin = FlutterLocalNotificationsPlugin();
+      await plugin.initialize(
+        settings: const InitializationSettings(
+          android: AndroidInitializationSettings('ic_stat_readalarm'),
+        ),
+      );
+      await plugin.cancelAllPendingNotifications();
+    } catch (e) {
+      debugPrint('Removing old scheduled notifications failed: $e');
+    }
   }
 
-  AlarmLaunch? _toLaunch(NotificationResponse response) {
-    final payload = AlarmPayload.decode(response.payload);
+  AlarmLaunch? _toLaunch(Object? data) {
+    if (data is! Map) return null;
+    final payload = AlarmPayload.decode(data['payload'] as String?);
     if (payload == null) return null;
-    final action = switch (response.actionId) {
-      _actionStart => AlarmAction.start,
-      _actionSnooze => AlarmAction.snooze,
+    final action = switch (data['action']) {
+      'start' => AlarmAction.start,
+      'snooze' => AlarmAction.snooze,
       _ => AlarmAction.open,
     };
-    return AlarmLaunch(payload, action);
+    return AlarmLaunch(payload, action, cold: data['cold'] == true);
+  }
+
+  Future<T?> _call<T>(String method, [Object? args]) async {
+    try {
+      return await _channel.invokeMethod<T>(method, args);
+    } catch (e) {
+      debugPrint('Alarms $method failed: $e');
+      return null;
+    }
   }
 
   @override
-  Future<AlarmLaunch?> takeLaunch() async {
-    final details = await _plugin.getNotificationAppLaunchDetails();
-    final response = details?.notificationResponse;
-    if (details?.didNotificationLaunchApp != true || response == null) {
-      return null;
-    }
-    return _toLaunch(response);
-  }
+  Future<AlarmLaunch?> takeLaunch() async =>
+      _toLaunch(await _call<Object?>('takeLaunch'));
+
+  Map<String, Object?> _entry(int id, AlarmPayload payload,
+          {int weekday = 0, int hour = 0, int minute = 0, DateTime? at}) =>
+      {
+        'id': id,
+        'weekday': weekday,
+        'hour': hour,
+        'minute': minute,
+        'at': at?.millisecondsSinceEpoch ?? 0,
+        'payload': payload.encode(),
+        'title': payload.title,
+        'body': payload.body,
+      };
 
   @override
   Future<void> schedule(ReadingAlarm alarm) async {
@@ -321,87 +219,80 @@ class NotificationAlarmScheduler implements AlarmScheduler {
     final payload = AlarmPayload.forAlarm(alarm);
     final now = DateTime.now();
 
-    // Scheduling an id again replaces it (without touching a ring that's
+    // Setting an id again replaces it (without stopping a ring that's
     // showing), so only the slots this alarm no longer uses are cancelled.
     final slots = alarm.repeatDays.isEmpty ? {_onceSlot} : alarm.repeatDays;
-    for (var slot = 0; slot < _snoozeSlot; slot++) {
-      if (!slots.contains(slot)) {
-        await _plugin.cancel(id: _notificationId(alarm.id, slot));
-      }
-    }
+    await _call<void>('cancel', {
+      'ids': [
+        for (var slot = 0; slot < _snoozeSlot; slot++)
+          if (!slots.contains(slot)) _notificationId(alarm.id, slot),
+      ],
+    });
 
+    final entries = <Map<String, Object?>>[];
     if (alarm.repeatDays.isEmpty) {
       final at = alarm.nextOccurrence(now);
       if (!at.isAfter(now)) return; // A dated one-off whose day has passed.
-      await _plugin.zonedSchedule(
-        id: _notificationId(alarm.id, _onceSlot),
-        scheduledDate: tz.TZDateTime.from(at, tz.local),
-        notificationDetails: _alarmDetails(),
-        androidScheduleMode: AndroidScheduleMode.alarmClock,
-        title: payload.title,
-        body: payload.body,
-        payload: payload.encode(),
-      );
+      entries
+          .add(_entry(_notificationId(alarm.id, _onceSlot), payload, at: at));
     } else {
       for (final day in alarm.repeatDays) {
-        final onDay = alarm.copyWith(repeatDays: {day}).nextOccurrence(now);
-        await _ringWeekly(_plugin, payload, day, onDay);
+        entries.add(_entry(_notificationId(alarm.id, day), payload,
+            weekday: day + 1,
+            hour: alarm.time.hour,
+            minute: alarm.time.minute));
       }
     }
+    await _call<void>('set', {'entries': entries});
   }
 
   @override
-  Future<void> cancel(String alarmId) async {
-    for (var slot = 0; slot <= _snoozeSlot; slot++) {
-      await _plugin.cancel(id: _notificationId(alarmId, slot));
-    }
-  }
+  Future<void> cancel(String alarmId) => _call<void>('cancel', {
+        'ids': [
+          for (var slot = 0; slot <= _snoozeSlot; slot++)
+            _notificationId(alarmId, slot),
+        ],
+      });
 
   @override
   Future<void> scheduleOnce(AlarmPayload payload, DateTime at) =>
-      _plugin.zonedSchedule(
-        id: _notificationId(payload.alarmId, _snoozeSlot),
-        scheduledDate: tz.TZDateTime.from(at, tz.UTC),
-        notificationDetails: _alarmDetails(),
-        androidScheduleMode: AndroidScheduleMode.alarmClock,
-        title: payload.title,
-        body: payload.body,
-        payload: payload.encode(),
-      );
+      _call<void>('set', {
+        'entries': [
+          _entry(_notificationId(payload.alarmId, _snoozeSlot), payload,
+              at: at),
+        ],
+      });
 
   @override
-  Future<void> dismiss(String alarmId) => _silence(_plugin, alarmId);
+  Future<void> dismiss(String alarmId) => _call<void>('dismiss', {
+        'ids': [
+          for (var slot = 0; slot <= _snoozeSlot; slot++)
+            _notificationId(alarmId, slot),
+        ],
+      });
 
-  static const _diagnostics = MethodChannel('readalarm/diagnostics');
+  @override
+  Future<void> closeApp() => _call<void>('closeApp');
 
   @override
   Future<Map<String, bool>?> heldByAndroid(ReadingAlarm alarm) async {
     final ids = alarmNotificationIds(alarm)..remove('Snooze');
-    try {
-      final held = await _diagnostics.invokeMethod<List<Object?>>(
-          'registered', {'ids': ids.values.toList()});
-      if (held == null || held.length != ids.length) return null;
-      final labels = ids.keys.toList();
-      return {
-        for (var i = 0; i < labels.length; i++) labels[i]: held[i] == true,
-      };
-    } catch (e) {
-      return null;
-    }
+    final held =
+        await _call<List<Object?>>('registered', {'ids': ids.values.toList()});
+    if (held == null || held.length != ids.length) return null;
+    final labels = ids.keys.toList();
+    return {
+      for (var i = 0; i < labels.length; i++) labels[i]: held[i] == true,
+    };
   }
 
   @override
   Future<Set<String>> pendingAlarmIds() async {
-    try {
-      final pending = await _plugin.pendingNotificationRequests();
-      return {
-        for (final p in pending)
-          if (AlarmPayload.decode(p.payload) case final payload?)
-            payload.alarmId,
-      };
-    } catch (e) {
-      debugPrint('pendingNotificationRequests failed: $e');
-      return {};
-    }
+    final pending = await _call<List<Object?>>('pending') ?? const [];
+    return {
+      for (final p in pending)
+        if (AlarmPayload.decode(p as String?) case final payload?)
+          payload.alarmId,
+    };
   }
 }

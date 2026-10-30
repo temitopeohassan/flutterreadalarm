@@ -4,9 +4,7 @@ import android.app.ActivityManager
 import android.app.AlarmManager
 import android.app.ApplicationExitInfo
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.usage.UsageStatsManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -18,9 +16,6 @@ import java.util.Locale
 
 /** What the phone says about ReadAlarm, for diagnostics reports. */
 object Diagnostics {
-    private const val RECEIVER =
-        "com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
-
     private fun time(ms: Long): String =
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(ms))
 
@@ -137,21 +132,6 @@ object Diagnostics {
         15 -> "PACKAGE_STATE_CHANGE"
         16 -> "PACKAGE_UPDATED (app updated)"
         else -> "UNKNOWN ($code)"
-    }
-
-    /**
-     * Whether Android still holds the alarm for notification [id]. The
-     * notification plugin keeps its own list, which survives the phone
-     * removing the app's alarms; this asks Android itself.
-     */
-    fun isRegistered(context: Context, id: Int): Boolean {
-        val intent = Intent().setComponent(ComponentName(context, RECEIVER))
-        return PendingIntent.getBroadcast(
-            context,
-            id,
-            intent,
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
-        ) != null
     }
 
     /** The app's recent log lines (an app can read only its own). */

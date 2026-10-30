@@ -3,13 +3,92 @@ package com.readalarm.readalarm
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private var alarms: MethodChannel? = null
+
+    /** An alarm that opened the app, until Dart takes it. */
+    private var pendingLaunch: Map<String, Any?>? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        pendingLaunch = launchFrom(intent, cold = AlarmEngine.processJustStarted())
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val launch = launchFrom(intent, cold = false) ?: return
+        val channel = alarms
+        if (channel == null) pendingLaunch = launch else channel.invokeMethod("launch", launch)
+    }
+
+    /** The alarm [intent] is about, ringing it if it's the alarm going off. */
+    private fun launchFrom(intent: Intent?, cold: Boolean): Map<String, Any?>? {
+        val id = intent?.getIntExtra(AlarmEngine.EXTRA_ID, -1) ?: -1
+        if (id < 0) return null
+        val (payload, action) = when (intent?.action) {
+            AlarmEngine.ACTION_RING -> AlarmEngine.ring(this, id, opened = true) to "open"
+            AlarmEngine.ACTION_OPEN -> AlarmEngine.rungPayload(this, id) to "open"
+            AlarmEngine.ACTION_START -> {
+                AlarmEngine.dismiss(this, listOf(id))
+                AlarmEngine.rungPayload(this, id) to "start"
+            }
+            else -> null to null
+        }
+        // Handled once: a later recreation of the screen mustn't ring again.
+        intent?.removeExtra(AlarmEngine.EXTRA_ID)
+        if (payload == null) return null
+        return mapOf("payload" to payload, "action" to action, "cold" to cold)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        alarms = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "readalarm/alarms").also {
+            it.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "set" -> {
+                        for (m in call.argument<List<Map<*, *>>>("entries") ?: emptyList()) {
+                            AlarmEngine.set(this, AlarmEngine.Entry.fromMap(m))
+                        }
+                        result.success(null)
+                    }
+                    "cancel" -> {
+                        for (id in call.argument<List<Int>>("ids") ?: emptyList()) AlarmEngine.cancel(this, id)
+                        result.success(null)
+                    }
+                    "dismiss" -> {
+                        AlarmEngine.dismiss(this, call.argument<List<Int>>("ids") ?: emptyList())
+                        result.success(null)
+                    }
+                    "pending" -> result.success(AlarmEngine.stored(this).map { e -> e.payload })
+                    "registered" -> {
+                        val ids = call.argument<List<Int>>("ids") ?: emptyList()
+                        result.success(ids.map { id -> AlarmEngine.isRegistered(this, id) })
+                    }
+                    "takeLaunch" -> {
+                        result.success(pendingLaunch)
+                        pendingLaunch = null
+                    }
+                    // Closes the app completely, as the phone might, so the
+                    // alarm test checks an alarm can open it from closed.
+                    // The card stays in recent apps, keeping its lock.
+                    "closeApp" -> {
+                        result.success(null)
+                        moveTaskToBack(true)
+                        android.os.Handler(mainLooper).postDelayed(
+                            { android.os.Process.killProcess(android.os.Process.myPid()) },
+                            500,
+                        )
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "readalarm/autostart")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -24,7 +103,7 @@ class MainActivity : FlutterActivity() {
                     "phone" -> result.success(Diagnostics.phone(this) + "\n\nAUTO-START\n" + report())
                     "registered" -> {
                         val ids = call.argument<List<Int>>("ids") ?: emptyList()
-                        result.success(ids.map { Diagnostics.isRegistered(this, it) })
+                        result.success(ids.map { AlarmEngine.isRegistered(this, it) })
                     }
                     "logcat" -> Thread {
                         val text = Diagnostics.logcat(call.argument<Int>("lines") ?: 400)

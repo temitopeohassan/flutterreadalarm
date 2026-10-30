@@ -1,57 +1,72 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/models/reading_alarm.dart';
 import 'package:readalarm/services/alarm_scheduler.dart';
-import 'package:timezone/data/latest.dart' as tzdata;
 
-/// Stands in for flutter_local_notifications' Android side. Like Android, a
-/// showing notification is reported without its payload; scheduled ones
-/// keep theirs.
-class FakeAndroidNotifications {
-  FakeAndroidNotifications(this.binding) {
+/// Stands in for AlarmEngine.kt on the 'readalarm/alarms' channel.
+class FakeAlarmEngine {
+  FakeAlarmEngine(this.binding) {
     binding.defaultBinaryMessenger.setMockMethodCallHandler(_channel, _handle);
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('dexterous.com/flutter/local_notifications'),
+        (call) async => null);
   }
 
-  static const _channel =
-      MethodChannel('dexterous.com/flutter/local_notifications');
+  static const _channel = MethodChannel('readalarm/alarms');
   final TestWidgetsFlutterBinding binding;
 
-  /// Scheduled rings: id → payload.
-  final scheduled = <int, String?>{};
+  /// Alarms set, by id.
+  final entries = <int, Map>{};
+  final dismissed = <int>[];
 
-  /// Notifications showing (ringing) now.
-  final showing = <int>{};
+  /// Ids Android lost (as when a phone force-stops the app).
+  final lost = <int>{};
+  Map<String, Object?>? launch;
 
-  /// Makes the scheduled ring [id] fire.
-  void ring(int id) => showing.add(id);
+  void dispose() {
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(_channel, null);
+  }
 
-  void dispose() =>
-      binding.defaultBinaryMessenger.setMockMethodCallHandler(_channel, null);
+  /// Android opening the app for alarm [id] while it's running.
+  Future<void> ring(int id, {String action = 'open'}) async {
+    const codec = StandardMethodCodec();
+    await binding.defaultBinaryMessenger.handlePlatformMessage(
+      _channel.name,
+      codec.encodeMethodCall(MethodCall('launch', {
+        'payload': entries[id]!['payload'],
+        'action': action,
+        'cold': false,
+      })),
+      (_) {},
+    );
+  }
 
   Future<Object?> _handle(MethodCall call) async {
+    final args = call.arguments as Map?;
     switch (call.method) {
-      case 'zonedSchedule':
-        final args = (call.arguments as Map).cast<String, Object?>();
-        scheduled[args['id'] as int] = args['payload'] as String?;
-        return null;
+      case 'set':
+        for (final e in args!['entries'] as List) {
+          entries[(e as Map)['id'] as int] = e;
+          lost.remove(e['id']);
+        }
       case 'cancel':
-        final args = call.arguments;
-        final id = args is Map ? args['id'] as int : args as int;
-        scheduled.remove(id);
-        showing.remove(id);
-        return null;
-      case 'getActiveNotifications':
+        for (final id in args!['ids'] as List) {
+          entries.remove(id);
+        }
+      case 'dismiss':
+        dismissed.addAll((args!['ids'] as List).cast<int>());
+      case 'pending':
+        return [for (final e in entries.values) e['payload']];
+      case 'registered':
         return [
-          for (final id in showing)
-            {'id': id, 'channelId': 'reading_alarms', 'tag': null},
+          for (final id in args!['ids'] as List)
+            entries.containsKey(id) && !lost.contains(id),
         ];
-      case 'pendingNotificationRequests':
-        return [
-          for (final e in scheduled.entries)
-            {'id': e.key, 'title': '', 'body': '', 'payload': e.value},
-        ];
+      case 'takeLaunch':
+        final l = launch;
+        launch = null;
+        return l;
     }
     return null;
   }
@@ -59,91 +74,98 @@ class FakeAndroidNotifications {
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
-  late FakeAndroidNotifications android;
+  late FakeAlarmEngine engine;
 
-  setUpAll(tzdata.initializeTimeZones);
-  setUp(() {
-    AndroidFlutterLocalNotificationsPlugin.registerWith();
-    android = FakeAndroidNotifications(binding);
-  });
-  tearDown(() => android.dispose());
+  setUp(() => engine = FakeAlarmEngine(binding));
+  tearDown(() => engine.dispose());
 
   ReadingAlarm alarm({Set<int> days = const {0, 2, 4}}) => ReadingAlarm(
         id: 'a1',
-        time: const TimeOfDay(hour: 7, minute: 0),
+        time: const TimeOfDay(hour: 19, minute: 0),
         book: SampleData.books.first,
         durationMin: 15,
         repeatDays: days,
       );
 
-  test('dismissing stops a ringing weekly alarm and keeps its next rings',
-      () async {
+  test('a weekly alarm is set as one alarm-clock ring per day', () async {
     final scheduler = NotificationAlarmScheduler();
     await scheduler.schedule(alarm());
-    final rings = Set.of(android.scheduled.keys);
-    expect(rings, hasLength(3));
-
-    // Monday's ring goes off; Android reports it without a payload.
-    final monday = rings.firstWhere((id) => id % 10 == 0);
-    android.ring(monday);
-
-    await scheduler.dismiss('a1');
-    expect(android.showing, isEmpty, reason: 'the ringing stops');
-    expect(android.scheduled.keys.toSet(), rings,
-        reason: 'Monday still rings next week');
+    expect(engine.entries, hasLength(3));
+    final days = [for (final e in engine.entries.values) e['weekday']]..sort();
+    expect(days, [1, 3, 5], reason: 'Mon, Wed, Fri (Monday = 1)');
+    for (final e in engine.entries.values) {
+      expect(e['hour'], 19);
+      expect(e['minute'], 0);
+      final payload = AlarmPayload.decode(e['payload'] as String)!;
+      expect(payload.alarmId, 'a1');
+      expect(payload.durationMin, 15);
+    }
+    expect(await scheduler.pendingAlarmIds(), {'a1'});
   });
 
-  test('dismissing stops a ringing one-off alarm, snooze and test alarm',
-      () async {
-    final scheduler = NotificationAlarmScheduler();
-    await scheduler.schedule(alarm(days: const {}));
-    final once = android.scheduled.keys.single;
-    android.ring(once);
-    await scheduler.dismiss('a1');
-    expect(android.showing, isEmpty);
-
-    await scheduler.scheduleOnce(
-      const AlarmPayload(
-          alarmId: 'test',
-          bookId: 'b1',
-          durationMin: 1,
-          title: 'Test alarm',
-          body: ''),
-      DateTime.now().add(const Duration(minutes: 1)),
-    );
-    final test = android.scheduled.keys.single;
-    android.ring(test);
-    await scheduler.dismiss('test');
-    expect(android.showing, isEmpty);
-  });
-
-  test('scheduling again keeps a ringing alarm and its snooze', () async {
+  test('dropping days cancels only those; disabling cancels all', () async {
     final scheduler = NotificationAlarmScheduler();
     final a = alarm();
     await scheduler.schedule(a);
-    final rings = Set.of(android.scheduled.keys);
-    final monday = rings.firstWhere((id) => id % 10 == 0);
-    android.ring(monday);
-    await scheduler.scheduleOnce(
-        AlarmPayload.forAlarm(a), DateTime.now().add(const Duration(hours: 1)));
-    final snooze = android.scheduled.keys.firstWhere((id) => id % 10 == 8);
-
-    await scheduler.schedule(a);
-    expect(android.showing, {monday});
-    expect(android.scheduled.keys.toSet(), {...rings, snooze});
-
-    // Dropping days cancels only those days.
+    final monday = alarmNotificationIds(a)['Mon']!;
     await scheduler.schedule(a.copyWith(repeatDays: {0}));
-    expect(android.scheduled.keys.toSet(), {monday, snooze});
-    expect(android.showing, {monday});
+    expect(engine.entries.keys, [monday]);
+    await scheduler.schedule(a.copyWith(enabled: false));
+    expect(engine.entries, isEmpty);
   });
 
-  test('dismissing leaves other alarms ringing', () async {
+  test('a one-off alarm rings once at its date and time', () async {
     final scheduler = NotificationAlarmScheduler();
-    await scheduler.schedule(alarm(days: const {}));
-    final other = android.scheduled.keys.single;
-    android.ring(other);
-    await scheduler.dismiss('someone-else');
-    expect(android.showing, {other});
+    final tomorrow =
+        DateUtils.dateOnly(DateTime.now()).add(const Duration(days: 1));
+    await scheduler
+        .schedule(alarm(days: const {}).copyWith(date: () => tomorrow));
+    final e = engine.entries.values.single;
+    expect(e['weekday'], 0);
+    expect(DateTime.fromMillisecondsSinceEpoch(e['at'] as int),
+        tomorrow.add(const Duration(hours: 19)));
+  });
+
+  test('dismissing silences every ring of the alarm', () async {
+    final scheduler = NotificationAlarmScheduler();
+    await scheduler.dismiss('a1');
+    expect(
+        engine.dismissed.toSet(),
+        alarmNotificationIds(alarm(days: const {0, 1, 2, 3, 4, 5, 6}))
+            .values
+            .toSet()
+          ..add(alarmNotificationIds(alarm(days: const {}))['Once']!));
+  });
+
+  test('Android asked directly whether it still holds each ring', () async {
+    final scheduler = NotificationAlarmScheduler();
+    final a = alarm();
+    await scheduler.schedule(a);
+    engine.lost.add(alarmNotificationIds(a)['Wed']!);
+    expect(await scheduler.heldByAndroid(a),
+        {'Mon': true, 'Wed': false, 'Fri': true});
+  });
+
+  test('alarm launches reach the app, cold or while running', () async {
+    final scheduler = NotificationAlarmScheduler();
+    final launches = <AlarmLaunch>[];
+    await scheduler.init(launches.add);
+    await scheduler.schedule(alarm());
+
+    final id = alarmNotificationIds(alarm())['Mon']!;
+    engine.launch = {
+      'payload': engine.entries[id]!['payload'],
+      'action': 'start',
+      'cold': true,
+    };
+    final cold = await scheduler.takeLaunch();
+    expect(cold!.payload.alarmId, 'a1');
+    expect(cold.action, AlarmAction.start);
+    expect(cold.cold, isTrue);
+    expect(await scheduler.takeLaunch(), isNull, reason: 'taken once');
+
+    await engine.ring(id);
+    expect(launches.single.action, AlarmAction.open);
+    expect(launches.single.cold, isFalse);
   });
 }

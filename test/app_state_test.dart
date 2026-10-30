@@ -184,6 +184,10 @@ void main() {
     test('permissions come from the device; auto-start from the user',
         () async {
       final (state, fakes) = await demoState();
+      state
+        ..autoStartConfirmed = false
+        ..recentsLockConfirmed = false;
+      await state.refreshPermissions();
       expect(state.allPermissionsGranted, isFalse);
       for (final key in state.permissions.keys.toList()) {
         await state.requestPermission(key);
@@ -191,6 +195,7 @@ void main() {
       expect(fakes.permissions.requested,
           ['notifications', 'exactAlarm', 'battery']);
       expect(state.autoStartConfirmed, isTrue);
+      expect(state.recentsLockConfirmed, isTrue);
       expect(state.allPermissionsGranted, isTrue);
       state.dispose();
     });
@@ -231,8 +236,10 @@ void main() {
       expect(at.difference(DateTime.now()).inSeconds, closeTo(60, 2));
       state.dispose();
 
-      final (empty, _) = await demoState(emptyLibrary: true);
-      expect(await empty.scheduleTestAlarm(), isFalse);
+      // Without a book it still rings (the alarm test needs no book).
+      final (empty, emptyFakes) = await demoState(emptyLibrary: true);
+      expect(await empty.scheduleTestAlarm(), isTrue);
+      expect(emptyFakes.alarms.once.single.$1.bookId, '');
       empty.dispose();
     });
 
@@ -428,6 +435,17 @@ void main() {
           EventLog.instance.lines
               .lastWhere((l) => l.contains('before resetting')),
           contains('Android held 1 of 3 rings (missing Wed, Fri)'));
+      state.dispose();
+    });
+
+    test('a dropped alarm marks alarms as not working', () async {
+      final (state, fakes) = await demoState();
+      expect(state.alarmsVerified, isTrue);
+      fakes.alarms.held['a1'] = {'Mon': false, 'Wed': false, 'Fri': false};
+      await state.resyncAlarms();
+      expect(state.alarmsDroppedAt, isNotNull);
+      expect(state.alarmsVerified, isFalse);
+      expect(state.permissions['alarmTest'], isFalse);
       state.dispose();
     });
 

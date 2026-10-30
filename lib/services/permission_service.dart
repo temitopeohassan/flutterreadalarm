@@ -4,9 +4,17 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// Keys of the permissions the alarm needs, as shown in onboarding and in
-/// Settings → Alarm health. 'autoStart' has no Android API; the app tracks
-/// the user's confirmation itself.
-const permissionKeys = ['notifications', 'exactAlarm', 'battery', 'autoStart'];
+/// Settings → Alarm health. 'autoStart' and 'recentsLock' have no Android
+/// API: the app tracks the user's confirmation, and 'alarmTest' checks the
+/// result (an alarm opened the app from closed).
+const permissionKeys = [
+  'notifications',
+  'exactAlarm',
+  'battery',
+  'autoStart',
+  'recentsLock',
+  'alarmTest',
+];
 
 abstract class PermissionService {
   /// Current status of every key except 'autoStart'.

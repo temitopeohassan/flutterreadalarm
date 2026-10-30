@@ -64,6 +64,17 @@
             android:name="com.readalarm.readalarm.NOTIFICATION_ICON"
             android:resource="@drawable/ic_stat_readalarm" />
 
+        <!-- Reading alarms: fallback ring, Snooze, and putting alarms back
+             after a reboot, an update or a clock change (AlarmEngine). -->
+        <receiver android:name=".AlarmReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
         <!-- AdMob app id, from admobAppId in android/app/build.gradle.kts. -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"

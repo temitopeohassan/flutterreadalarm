@@ -204,11 +204,6 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
             widget.onNext();
           },
         ),
-        TextButton(
-          onPressed: widget.onNext,
-          child: const Text('Skip for now',
-              style: TextStyle(color: AppColors.textSecondary)),
-        ),
       ],
     );
   }

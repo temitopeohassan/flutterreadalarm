@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/main.dart';
+import 'package:readalarm/services/alarm_scheduler.dart';
 import 'package:readalarm/state/app_state.dart';
 
 import '../test/support/fakes.dart';
@@ -86,6 +87,8 @@ void main() {
     await tapText(tester, 'Allow background reading');
     await _shot(tester, '05_onboarding_autostart');
     await tapText(tester, 'I\'ve done this');
+    await _shot(tester, '05b_onboarding_recents_lock');
+    await tapText(tester, 'I\'ve locked it');
     await _shot(tester, '06_onboarding_first_book');
 
     await tapText(tester, 'Choose a PDF or EPUB');
@@ -97,11 +100,19 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await _shot(tester, '09_import_sheet_ready');
     await tapText(tester, 'Done');
-    await tapText(tester, 'Run 1-minute test alarm');
-    await tester.pump(const Duration(seconds: 5)); // Let the snackbar go.
     await _shot(tester, '10_onboarding_first_book_added');
 
-    await tapText(tester, 'Finish setup');
+    await tapText(tester, 'Continue');
+    await _shot(tester, '10b_onboarding_alarm_test');
+    await tapText(tester, 'Start test');
+    await tester.pump(const Duration(seconds: 1));
+    await _shot(tester, '10c_alarm_test_waiting');
+    // The test alarm opens ReadAlarm from closed.
+    fakes.alarms.onLaunch!(
+        AlarmLaunch(fakes.alarms.once.last.$1, AlarmAction.open, cold: true));
+    await _shot(tester, '10d_alarm_test_passed');
+
+    await tapText(tester, 'Continue');
     await _shot(tester, '11_paywall');
     await tapText(tester, 'Use The Free Version');
     await _shot(tester, '12_home_first_run');

@@ -2,15 +2,19 @@ import 'package:flutter/material.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../paywall_screen.dart';
+import 'alarm_test_screen.dart';
 import 'battery_optimization_screen.dart';
 import 'exact_alarm_permission_screen.dart';
 import 'first_book_screen.dart';
 import 'notifications_permission_screen.dart';
 import 'oem_autostart_screen.dart';
+import 'recents_lock_screen.dart';
 import 'welcome_screen.dart';
 
-/// Hosts the 6 onboarding screens with a step indicator (ONB-1).
-/// On finish: the paywall (Premium, or continue free), then the app.
+/// Hosts the onboarding screens with a step indicator (ONB-1). The
+/// alarm-critical steps (auto-start, recent-apps lock, the alarm test) can't
+/// be skipped. The current step is saved, because the alarm test closes the
+/// app. On finish: the paywall (Premium, or continue free), then the app.
 /// Ad consent (ADS-1) is requested after this flow, before the first ad.
 class OnboardingFlow extends StatefulWidget {
   const OnboardingFlow({super.key});
@@ -20,9 +24,22 @@ class OnboardingFlow extends StatefulWidget {
 }
 
 class _OnboardingFlowState extends State<OnboardingFlow> {
-  final _controller = PageController();
-  int _page = 0;
-  static const _count = 6;
+  late final PageController _controller;
+  late int _page;
+  static const _count = 8;
+  static const _autoStartPage = 4;
+
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    // Resume where setup stopped (the alarm test closes the app).
+    _page = AppScope.of(context).onboardingStep.clamp(0, _count - 1);
+    _controller = PageController(initialPage: _page);
+  }
 
   void _next() {
     if (_page < _count - 1) {
@@ -32,6 +49,12 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       );
     }
   }
+
+  void _checkSettings() => _controller.animateToPage(
+        _autoStartPage,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
 
   void _back() {
     _controller.previousPage(
@@ -102,14 +125,22 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               child: PageView(
                 controller: _controller,
                 physics: const NeverScrollableScrollPhysics(),
-                onPageChanged: (i) => setState(() => _page = i),
+                onPageChanged: (i) {
+                  setState(() => _page = i);
+                  AppScope.of(context).setOnboardingStep(i);
+                },
                 children: [
                   WelcomeScreen(onNext: _next),
                   NotificationsPermissionScreen(onNext: _next),
                   ExactAlarmPermissionScreen(onNext: _next),
                   BatteryOptimizationScreen(onNext: _next),
                   OemAutostartScreen(onNext: _next),
-                  FirstBookScreen(onFinish: _finish),
+                  RecentsLockScreen(onNext: _next),
+                  FirstBookScreen(onNext: _next),
+                  AlarmTestScreen(
+                    onPassed: _finish,
+                    onCheckSettings: _checkSettings,
+                  ),
                 ],
               ),
             ),
