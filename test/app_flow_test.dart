@@ -86,6 +86,7 @@ void main() {
     // The alarm test: sets an alarm a minute ahead and closes the app.
     expect(find.text('Check your alarm works'), findsOneWidget);
     await tapText(tester, 'Start test');
+    await tapText(tester, 'Close ReadAlarm and test');
     await tester.pump(const Duration(seconds: 1));
     expect(fakes.alarms.once.single.$1.alarmId, 'test');
     expect(fakes.alarms.closed, 1);
@@ -125,6 +126,7 @@ void main() {
     expect(find.text('Check your alarm works'), findsOneWidget);
 
     await tapText(tester, 'Start test');
+    await tapText(tester, 'Close ReadAlarm and test');
     await tester.pump(const Duration(seconds: 1));
     // The alarm arrives while ReadAlarm is still open: no proof.
     fakes.alarms
@@ -135,6 +137,7 @@ void main() {
     // No alarm at all: after the wait, it's a failure, with a way back to
     // the settings and a way on.
     await tapText(tester, 'Test again');
+    await tapText(tester, 'Close ReadAlarm and test');
     await tester.pump(const Duration(seconds: 1));
     state.alarmTestStartedAt =
         DateTime.now().subtract(const Duration(minutes: 4));
@@ -166,6 +169,7 @@ void main() {
 
     await tapText(tester, 'Run the alarm test');
     await tapText(tester, 'Start test');
+    await tapText(tester, 'Close ReadAlarm and test');
     await tester.pump(const Duration(seconds: 1));
     fakes.alarms.onLaunch!(
         AlarmLaunch(fakes.alarms.once.last.$1, AlarmAction.open, cold: true));
@@ -203,6 +207,7 @@ void main() {
     await tapText(tester, 'Fix');
     expect(find.text('Check your alarm works'), findsOneWidget);
     await tapText(tester, 'Start test');
+    await tapText(tester, 'Close ReadAlarm and test');
     await tester.pump(const Duration(seconds: 1));
     fakes.alarms.onLaunch!(
         AlarmLaunch(fakes.alarms.once.last.$1, AlarmAction.open, cold: true));

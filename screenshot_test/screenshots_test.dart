@@ -105,6 +105,7 @@ void main() {
     await tapText(tester, 'Continue');
     await _shot(tester, '10b_onboarding_alarm_test');
     await tapText(tester, 'Start test');
+    await tapText(tester, 'Close ReadAlarm and test');
     await tester.pump(const Duration(seconds: 1));
     await _shot(tester, '10c_alarm_test_waiting');
     // The test alarm opens ReadAlarm from closed.

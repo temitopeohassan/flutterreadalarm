@@ -60,6 +60,35 @@ class _AlarmTestScreenState extends State<AlarmTestScreen> {
     super.dispose();
   }
 
+  /// Says what's about to happen (ReadAlarm closes itself), then starts.
+  Future<void> _start(AppState state) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('ReadAlarm will close now'),
+        content: const Text(
+          'This checks an alarm can open ReadAlarm when it\'s closed.\n\n'
+          '1. ReadAlarm closes.\n'
+          '2. Lock your phone and wait.\n'
+          '3. In about a minute the test alarm rings and opens ReadAlarm.\n\n'
+          'If nothing rings within 2 minutes, open ReadAlarm again: it will '
+          'say what to check.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Close ReadAlarm and test'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await state.startAlarmTest();
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
@@ -133,7 +162,7 @@ class _AlarmTestScreenState extends State<AlarmTestScreen> {
             label:
                 status == AlarmTestStatus.notRun ? 'Start test' : 'Test again',
             icon: Icons.alarm_on_rounded,
-            onPressed: state.startAlarmTest,
+            onPressed: () => _start(state),
           ),
           if (status == AlarmTestStatus.failed) ...[
             if (widget.onCheckSettings != null)

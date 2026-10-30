@@ -96,6 +96,13 @@ object Diagnostics {
         }
 
         lines += ""
+        lines += "ALARMS HELD BY THE ALARM ENGINE"
+        lines += AlarmEngine.describe(context)
+        lines += ""
+        lines += "ALARM ENGINE LOG (whether alarms fired)"
+        lines += AlarmEngine.logText(context).ifEmpty { "Nothing yet." }
+
+        lines += ""
         lines += "WHY READALARM WAS LAST CLOSED (newest first)"
         if (Build.VERSION.SDK_INT >= 30) {
             try {

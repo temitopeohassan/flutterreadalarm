@@ -152,12 +152,41 @@ object AlarmEngine {
         arm(context, e)
     }
 
+    // ---- Log, for diagnostics reports ---------------------------------
+
+    private const val LOG = "readalarm_engine_log"
+
+    /** Records what the engine did, so a report shows whether an alarm fired. */
+    fun log(context: Context, message: String) {
+        val p = context.getSharedPreferences(LOG, Context.MODE_PRIVATE)
+        val stamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+            .format(java.util.Date())
+        val lines = (p.getString("log", "") ?: "").split("\n").filter { it.isNotEmpty() }
+        p.edit().putString("log", (lines.takeLast(299) + "$stamp $message").joinToString("\n")).apply()
+    }
+
+    fun logText(context: Context): String =
+        context.getSharedPreferences(LOG, Context.MODE_PRIVATE).getString("log", "") ?: ""
+
+    /** Stored alarms with their next ring and whether Android holds them. */
+    fun describe(context: Context): String {
+        val fmt = java.text.SimpleDateFormat("EEE yyyy-MM-dd HH:mm", java.util.Locale.US)
+        val list = stored(context)
+        if (list.isEmpty()) return "No alarms stored."
+        return list.joinToString("\n") { e ->
+            val next = nextTrigger(e)?.let { fmt.format(java.util.Date(it)) } ?: "none"
+            val kind = if (e.weekday == 0) "once" else "weekly day ${e.weekday} ${e.hour}:${"%02d".format(e.minute)}"
+            "${e.id}: $kind, next $next, held by Android: ${isRegistered(context, e.id)}, \"${e.title}\""
+        }
+    }
+
     private fun arm(context: Context, e: Entry) {
         val am = context.getSystemService(AlarmManager::class.java)
         val trigger = nextTrigger(e)
         if (trigger == null) {
             disarm(context, e.id)
             prefs(context).edit().remove("${e.id}").apply()
+            log(context, "Alarm ${e.id} has no future ring: removed")
             return
         }
         try {
@@ -169,8 +198,10 @@ object AlarmEngine {
             broadcastIntent(context, ACTION_FALLBACK, e.id)?.let {
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger + FALLBACK_DELAY_MS, it)
             }
+            log(context, "Alarm ${e.id} set for ${java.util.Date(trigger)}")
         } catch (ex: SecurityException) {
             // Exact alarms not allowed: the app's health check reports it.
+            log(context, "ERROR alarm ${e.id} not set: ${ex.message}")
         }
     }
 
@@ -186,7 +217,8 @@ object AlarmEngine {
     }
 
     /** Puts every stored alarm back (after a reboot or a clock change). */
-    fun rearmAll(context: Context) {
+    fun rearmAll(context: Context, reason: String = "") {
+        log(context, "Putting all alarms back ($reason)")
         for (e in stored(context)) arm(context, e)
     }
 
@@ -206,7 +238,15 @@ object AlarmEngine {
      * Returns the alarm's payload, or null if it's unknown or already rang.
      */
     fun ring(context: Context, id: Int, opened: Boolean): String? {
-        val e = entry(context, id) ?: return null
+        log(
+            context,
+            "Alarm $id fired: ${if (opened) "Android opened ReadAlarm" else "fallback broadcast"}" +
+                (if (processJustStarted()) ", app was closed" else ", app was running"),
+        )
+        val e = entry(context, id) ?: run {
+            log(context, "Alarm $id is unknown or already rang")
+            return null
+        }
         val am = context.getSystemService(AlarmManager::class.java)
         if (opened) {
             broadcastIntent(context, ACTION_FALLBACK, id, create = false)?.let { am.cancel(it) }
@@ -291,6 +331,7 @@ object AlarmEngine {
 
     /** Silences [id] and rings again in 10 minutes under [snoozeId]. */
     fun snooze(context: Context, id: Int, snoozeId: Int) {
+        log(context, "Alarm $id snoozed")
         dismiss(context, listOf(id))
         val e = entry(context, id) ?: entry(context, snoozeId) ?: return
         set(context, e.copy(id = snoozeId, weekday = 0, at = System.currentTimeMillis() + SNOOZE_MS))
@@ -323,7 +364,7 @@ class AlarmReceiver : BroadcastReceiver() {
             Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
             "android.intent.action.QUICKBOOT_POWERON",
-            -> AlarmEngine.rearmAll(context)
+            -> AlarmEngine.rearmAll(context, intent.action ?: "")
             else -> AlarmEngine.onBroadcast(context, intent)
         }
     }

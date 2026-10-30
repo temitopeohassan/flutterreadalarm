@@ -31,6 +31,7 @@ class MainActivity : FlutterActivity() {
     private fun launchFrom(intent: Intent?, cold: Boolean): Map<String, Any?>? {
         val id = intent?.getIntExtra(AlarmEngine.EXTRA_ID, -1) ?: -1
         if (id < 0) return null
+        AlarmEngine.log(this, "Screen opened for alarm $id (${intent?.action?.substringAfterLast('.')})")
         val (payload, action) = when (intent?.action) {
             AlarmEngine.ACTION_RING -> AlarmEngine.ring(this, id, opened = true) to "open"
             AlarmEngine.ACTION_OPEN -> AlarmEngine.rungPayload(this, id) to "open"
@@ -78,6 +79,7 @@ class MainActivity : FlutterActivity() {
                     // alarm test checks an alarm can open it from closed.
                     // The card stays in recent apps, keeping its lock.
                     "closeApp" -> {
+                        AlarmEngine.log(this, "Alarm test: closing the app")
                         result.success(null)
                         moveTaskToBack(true)
                         android.os.Handler(mainLooper).postDelayed(
