@@ -98,6 +98,9 @@ object Diagnostics {
         lines += ""
         lines += "ALARMS HELD BY THE ALARM ENGINE"
         lines += AlarmEngine.describe(context)
+        lines += "Standby (keeps ReadAlarm running while an alarm is set): " +
+            if (AlarmKeeper.running) "running" else "not running"
+        lines += "Backup push: " + PushBackup.describe(context)
         lines += ""
         lines += "ALARM ENGINE LOG (whether alarms fired)"
         lines += AlarmEngine.logText(context).ifEmpty { "Nothing yet." }

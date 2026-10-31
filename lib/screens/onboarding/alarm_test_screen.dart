@@ -124,6 +124,13 @@ class _AlarmTestScreenState extends State<AlarmTestScreen> {
           'ReadAlarm was still open when the alarm rang, so this didn\'t test '
               'a closed app. Start the test again and leave ReadAlarm closed.',
         ),
+      AlarmTestStatus.late => (
+          Icons.schedule_rounded,
+          'The alarm rang ${state.alarmTestDelay?.inMinutes ?? 'some'} minutes late',
+          'Your phone held the alarm back while ReadAlarm was closed. Keep the '
+              '"Next reading" notification on, check auto-start and the lock '
+              'in recent apps, then test again.',
+        ),
       AlarmTestStatus.failed => (
           Icons.error_outline_rounded,
           'The alarm didn\'t open ReadAlarm',
@@ -164,7 +171,8 @@ class _AlarmTestScreenState extends State<AlarmTestScreen> {
             icon: Icons.alarm_on_rounded,
             onPressed: () => _start(state),
           ),
-          if (status == AlarmTestStatus.failed) ...[
+          if (status == AlarmTestStatus.failed ||
+              status == AlarmTestStatus.late) ...[
             if (widget.onCheckSettings != null)
               TextButton(
                 onPressed: widget.onCheckSettings,

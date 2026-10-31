@@ -50,6 +50,12 @@ opens ReadAlarm directly, even when it was closed, and it rings. A broadcast
 20 seconds later is a fallback in case a phone blocks that. Alarms are stored
 and put back after a reboot, an app update or a change of time or time zone.
 
+While an alarm is set, a **standby** foreground service keeps ReadAlarm
+running, with a quiet "Next reading: …" notification, so phones don't close
+it or hold back its alarms. A **backup push** from ReadAlarm's own PHP
+server (`server/`) can also ring each alarm through Firebase; it's off until
+configured. See [docs/alarm-reliability.md](docs/alarm-reliability.md).
+
 Phone makers' power managers (Tecno, Infinix, Xiaomi and others) can still
 stop alarms of closed apps, and Android doesn't let an app read their
 settings. So setup can't be skipped past the alarm-critical steps:
@@ -57,8 +63,8 @@ settings. So setup can't be skipped past the alarm-critical steps:
 1. **Auto-start** (phone-brand guide, opening the maker's own screen).
 2. **Lock in recent apps.**
 3. **The alarm test:** ReadAlarm sets an alarm a minute ahead and closes
-   itself; setup continues only once that alarm opens ReadAlarm from closed
-   (or the user chooses to continue anyway after a failure).
+   itself; setup continues only once that alarm opens ReadAlarm from closed,
+   within 2 minutes of its time (or the user chooses to continue anyway after a failure).
 
 Afterwards, each start checks with Android whether it still held every alarm.
 If the phone removed one, or the test hasn't passed, Home shows "Your alarm

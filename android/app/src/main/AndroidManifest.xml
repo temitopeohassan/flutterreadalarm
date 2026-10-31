@@ -10,6 +10,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Alarm standby: keeps ReadAlarm running while an alarm is set. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Backup push: sends alarm times to ReadAlarm's server. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="ReadAlarm"
@@ -75,6 +80,25 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+        <!-- Alarm standby (AlarmKeeper.kt): while an alarm is set, keeps
+             ReadAlarm running so the phone doesn't close it or hold back
+             its alarms. -->
+        <service
+            android:name=".AlarmKeeperService"
+            android:foregroundServiceType="systemExempted|specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user's scheduled reading alarms ready, so they ring on time on phones that close background apps." />
+        </service>
+        <!-- Backup push from ReadAlarm's server (PushBackup.kt). -->
+        <service
+            android:name=".PushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
         <!-- AdMob app id, from admobAppId in android/app/build.gradle.kts. -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"

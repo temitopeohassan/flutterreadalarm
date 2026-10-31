@@ -100,6 +100,21 @@ class AppState extends ChangeNotifier {
   /// nothing about a closed app.
   bool alarmTestRanWhileOpen = false;
 
+  /// When the test alarm last opened ReadAlarm from closed, but too late
+  /// to count: the phone held it back.
+  DateTime? alarmTestLateAt;
+
+  /// How late the test alarm may ring and still pass.
+  static const alarmTestLateLimit = Duration(minutes: 2);
+
+  /// How late the last late test alarm rang.
+  Duration? get alarmTestDelay {
+    final started = alarmTestStartedAt;
+    final late = alarmTestLateAt;
+    if (started == null || late == null) return null;
+    return late.difference(started.add(const Duration(minutes: 1)));
+  }
+
   /// When the phone was last found to have removed ReadAlarm's alarms.
   DateTime? alarmsDroppedAt;
 
@@ -123,6 +138,8 @@ class AppState extends ChangeNotifier {
     if (passed != null && !passed.isBefore(started)) {
       return AlarmTestStatus.passed;
     }
+    final late = alarmTestLateAt;
+    if (late != null && !late.isBefore(started)) return AlarmTestStatus.late;
     if (alarmTestRanWhileOpen) return AlarmTestStatus.ranWhileOpen;
     return clock.now().difference(started) < alarmTestWait
         ? AlarmTestStatus.waiting
@@ -188,6 +205,7 @@ class AppState extends ChangeNotifier {
         'alarmTestPassedAt': alarmTestPassedAt?.toIso8601String(),
         'alarmTestStartedAt': alarmTestStartedAt?.toIso8601String(),
         'alarmTestRanWhileOpen': alarmTestRanWhileOpen,
+        'alarmTestLateAt': alarmTestLateAt?.toIso8601String(),
         'alarmsDroppedAt': alarmsDroppedAt?.toIso8601String(),
         'voice': voice?.toMap(),
         'speed': speed,
@@ -215,6 +233,7 @@ class AppState extends ChangeNotifier {
     alarmTestPassedAt = date('alarmTestPassedAt');
     alarmTestStartedAt = date('alarmTestStartedAt');
     alarmTestRanWhileOpen = json['alarmTestRanWhileOpen'] as bool? ?? false;
+    alarmTestLateAt = date('alarmTestLateAt');
     alarmsDroppedAt = date('alarmsDroppedAt');
     voice = VoiceOption.fromMap(json['voice']);
     speed = (json['speed'] as num?)?.toDouble() ?? 1.0;
@@ -724,10 +743,22 @@ class AppState extends ChangeNotifier {
     logEvent('Alarm ${p.alarmId} opened (${launch.action.name}'
         '${launch.cold ? ', app was closed' : ''})');
     if (p.alarmId == 'test') {
-      if (launch.cold) {
-        alarmTestPassedAt = clock.now();
+      final started = alarmTestStartedAt;
+      final now = clock.now();
+      final lateBy = started == null
+          ? Duration.zero
+          : now.difference(started.add(const Duration(minutes: 1)));
+      if (launch.cold && lateBy > alarmTestLateLimit) {
+        // Rang, but held back by the phone: alarms would ring late.
+        alarmTestLateAt = now;
         alarmTestRanWhileOpen = false;
-        logEvent('Alarm test passed: the alarm opened ReadAlarm from closed');
+        logEvent('Alarm test failed: the alarm rang ${lateBy.inMinutes} min '
+            'late (the phone held it back)');
+      } else if (launch.cold) {
+        alarmTestPassedAt = now;
+        alarmTestRanWhileOpen = false;
+        logEvent('Alarm test passed: the alarm opened ReadAlarm from closed '
+            '(${lateBy.inSeconds} s after its time)');
       } else if (alarmTestStatus != AlarmTestStatus.passed) {
         alarmTestRanWhileOpen = true;
         logEvent('Alarm test inconclusive: ReadAlarm was still open');
@@ -1268,4 +1299,4 @@ class AppScope extends InheritedNotifier<AppState> {
 }
 
 /// Result of the alarm test ([AppState.startAlarmTest]).
-enum AlarmTestStatus { notRun, waiting, passed, failed, ranWhileOpen }
+enum AlarmTestStatus { notRun, waiting, passed, failed, ranWhileOpen, late }

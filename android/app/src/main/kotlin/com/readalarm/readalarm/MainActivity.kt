@@ -14,15 +14,37 @@ class MainActivity : FlutterActivity() {
     /** An alarm that opened the app, until Dart takes it. */
     private var pendingLaunch: Map<String, Any?>? = null
 
+    /** Whether ReadAlarm's screen is on view (between onStart and onStop). */
+    private var visible = false
+
+    /** Counts onStop, to tell whether another app's screen opened. */
+    private var stops = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        pendingLaunch = launchFrom(intent, cold = AlarmEngine.processJustStarted())
+        // A new screen: ReadAlarm wasn't on view when the alarm rang.
+        pendingLaunch = launchFrom(intent, cold = true)
+        AlarmKeeper.update(this)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        visible = true
+    }
+
+    override fun onStop() {
+        visible = false
+        stops++
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {
+        // "cold": ReadAlarm was closed or in the background, not on view.
+        // (Restoring it from recent apps also arrives here.)
+        val cold = !visible
         super.onNewIntent(intent)
         setIntent(intent)
-        val launch = launchFrom(intent, cold = false) ?: return
+        val launch = launchFrom(intent, cold = cold) ?: return
         val channel = alarms
         if (channel == null) pendingLaunch = launch else channel.invokeMethod("launch", launch)
     }
@@ -33,7 +55,7 @@ class MainActivity : FlutterActivity() {
         if (id < 0) return null
         AlarmEngine.log(this, "Screen opened for alarm $id (${intent?.action?.substringAfterLast('.')})")
         val (payload, action) = when (intent?.action) {
-            AlarmEngine.ACTION_RING -> AlarmEngine.ring(this, id, opened = true) to "open"
+            AlarmEngine.ACTION_RING -> AlarmEngine.ring(this, id, AlarmEngine.Source.SCREEN) to "open"
             AlarmEngine.ACTION_OPEN -> AlarmEngine.rungPayload(this, id) to "open"
             AlarmEngine.ACTION_START -> {
                 AlarmEngine.dismiss(this, listOf(id))
@@ -94,7 +116,7 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "readalarm/autostart")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "open" -> result.success(openAutoStart())
+                    "open" -> openAutoStart { result.success(it) }
                     "report" -> result.success(report())
                     else -> result.notImplemented()
                 }
@@ -133,25 +155,52 @@ class MainActivity : FlutterActivity() {
 
     /**
      * Opens the phone maker's auto-start screen, which isn't in Android's own
-     * app settings. Returns "autostart" if that screen opened, "manager" if
+     * app settings. Answers "autostart" if that screen opened, "manager" if
      * only the maker's phone-manager app did, or null if neither exists.
+     *
+     * Some phones accept the request but show nothing (Tecno's Phone Master
+     * closes its auto-start screen at once when another app opens it), so
+     * each try counts only if ReadAlarm's screen really went behind another.
      */
-    private fun openAutoStart(): String? {
+    private fun openAutoStart(done: (String?) -> Unit) {
+        val tries = mutableListOf<Pair<Intent, String>>()
         for ((pkg, cls) in AUTO_START_SCREENS) {
-            if (start(Intent().setComponent(ComponentName(pkg, cls)))) return "autostart"
+            tries += Intent().setComponent(ComponentName(pkg, cls)) to "autostart"
         }
         // The screen's name changes between versions (Tecno's Phone Master
         // especially), so look through the apps' screens for one.
         for (pkg in PHONE_MANAGERS + SETTINGS_APPS) {
             for (cls in autoStartScreensIn(pkg)) {
-                if (start(Intent().setComponent(ComponentName(pkg, cls)))) return "autostart"
+                tries += Intent().setComponent(ComponentName(pkg, cls)) to "autostart"
             }
         }
         for (pkg in PHONE_MANAGERS) {
             val launch = packageManager.getLaunchIntentForPackage(pkg) ?: continue
-            if (start(launch)) return "manager"
+            tries += launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) to "manager"
         }
-        return null
+        val seen = mutableSetOf<String>()
+        val unique = tries.filter { seen.add(it.first.component?.flattenToString() ?: it.first.toUri(0)) }
+        tryNext(unique, 0, done)
+    }
+
+    private fun tryNext(tries: List<Pair<Intent, String>>, i: Int, done: (String?) -> Unit) {
+        if (i >= tries.size) {
+            AlarmEngine.log(this, "Auto-start: no screen opened")
+            return done(null)
+        }
+        val (intent, kind) = tries[i]
+        val before = stops
+        if (!start(intent)) return tryNext(tries, i + 1, done)
+        android.os.Handler(mainLooper).postDelayed({
+            val name = intent.component?.flattenToShortString() ?: intent.`package`
+            if (stops > before || !hasWindowFocus()) {
+                AlarmEngine.log(this, "Auto-start: opened $name")
+                done(kind)
+            } else {
+                AlarmEngine.log(this, "Auto-start: $name showed nothing")
+                tryNext(tries, i + 1, done)
+            }
+        }, 1_500L)
     }
 
     /** Screens of [pkg] other apps may open whose names suggest auto-start. */

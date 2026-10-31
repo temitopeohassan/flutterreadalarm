@@ -150,6 +150,16 @@ object AlarmEngine {
     fun set(context: Context, e: Entry) {
         prefs(context).edit().putString("${e.id}", e.toJson()).apply()
         arm(context, e)
+        changed(context)
+    }
+
+    /** The soonest ring of all stored alarms, or null if none is set. */
+    fun nextRing(context: Context): Long? = stored(context).mapNotNull { nextTrigger(it) }.minOrNull()
+
+    /** The alarms changed: refresh the standby and the backup server. */
+    private fun changed(context: Context) {
+        AlarmKeeper.update(context)
+        PushBackup.changed(context)
     }
 
     // ---- Log, for diagnostics reports ---------------------------------
@@ -198,6 +208,7 @@ object AlarmEngine {
             broadcastIntent(context, ACTION_FALLBACK, e.id)?.let {
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger + FALLBACK_DELAY_MS, it)
             }
+            rung(context).edit().putLong("armed_${e.id}", trigger).apply()
             log(context, "Alarm ${e.id} set for ${java.util.Date(trigger)}")
         } catch (ex: SecurityException) {
             // Exact alarms not allowed: the app's health check reports it.
@@ -214,12 +225,14 @@ object AlarmEngine {
     fun cancel(context: Context, id: Int) {
         disarm(context, id)
         prefs(context).edit().remove("$id").apply()
+        changed(context)
     }
 
     /** Puts every stored alarm back (after a reboot or a clock change). */
     fun rearmAll(context: Context, reason: String = "") {
         log(context, "Putting all alarms back ($reason)")
         for (e in stored(context)) arm(context, e)
+        changed(context)
     }
 
     /** Whether Android still holds the alarm for [id]. */
@@ -232,43 +245,71 @@ object AlarmEngine {
 
     // ---- Ringing ------------------------------------------------------
 
+    /** What made an alarm ring. */
+    enum class Source(val label: String) {
+        SCREEN("Android opened ReadAlarm"),
+        FALLBACK("fallback broadcast"),
+        PUSH("backup push from the server"),
+    }
+
+    private fun rung(context: Context) = context.getSharedPreferences(RUNG, Context.MODE_PRIVATE)
+
+    /** Whether two times are the same ring (to the minute). */
+    private fun sameRing(a: Long, b: Long) = Math.abs(a - b) < 60_000L
+
     /**
      * The alarm [id] is due: ring (a notification with the alarm sound),
-     * and set its next ring. [opened] is false for the fallback broadcast.
-     * Returns the alarm's payload, or null if it's unknown or already rang.
+     * and set its next ring. Each ring sounds once, whichever of the
+     * screen, the fallback or the backup push comes first.
+     * Returns the alarm's payload for the screen to show, or null.
      */
-    fun ring(context: Context, id: Int, opened: Boolean): String? {
+    fun ring(context: Context, id: Int, source: Source, due: Long? = null): String? {
         log(
             context,
-            "Alarm $id fired: ${if (opened) "Android opened ReadAlarm" else "fallback broadcast"}" +
-                (if (processJustStarted()) ", app was closed" else ", app was running"),
+            "Alarm $id fired: ${source.label}" +
+                (if (processJustStarted()) ", app was closed" else ", app was running") +
+                (if (AlarmKeeper.running) ", standby on" else ""),
         )
-        val e = entry(context, id) ?: run {
-            log(context, "Alarm $id is unknown or already rang")
+        val rungPrefs = rung(context)
+        val armed = rungPrefs.getLong("armed_$id", 0L)
+        val occurrence = due ?: armed
+        val lastRang = rungPrefs.getLong("rang_$id", 0L)
+        val e = entry(context, id)
+        val alreadyRang = occurrence != 0L && sameRing(lastRang, occurrence)
+        if (e == null || alreadyRang) {
+            log(context, "Alarm $id already rang or is unknown")
+            // The screen still opens on the ring in progress.
+            return if (source == Source.SCREEN) rungPayload(context, id) else null
+        }
+        if (source == Source.PUSH && (armed == 0L || !sameRing(armed, occurrence))) {
+            log(context, "Push for alarm $id is out of date: ignored")
             return null
         }
         val am = context.getSystemService(AlarmManager::class.java)
-        if (opened) {
+        if (source == Source.SCREEN) {
             broadcastIntent(context, ACTION_FALLBACK, id, create = false)?.let { am.cancel(it) }
         } else if (isRinging(context, id)) {
             return null // The screen opened already.
         }
+        if (source == Source.PUSH && Math.abs(System.currentTimeMillis() - occurrence) > 60_000L) {
+            log(context, "Alarm $id: Android had not rung it ${(System.currentTimeMillis() - occurrence) / 1000} s after its time")
+        }
         notify(context, e)
         // Kept for the notification's buttons, after a one-off is removed.
-        context.getSharedPreferences(RUNG, Context.MODE_PRIVATE).edit()
-            .putString("$id", e.payload).apply()
+        rungPrefs.edit().putString("$id", e.payload).putLong("rang_$id", occurrence).apply()
         if (e.weekday == 0) {
+            disarm(context, id) // In case another source rang it first.
             prefs(context).edit().remove("$id").apply()
         } else {
             arm(context, e) // Same day next week.
         }
+        changed(context)
         return e.payload
     }
 
     /** The payload of the alarm that last rang as [id]. */
     fun rungPayload(context: Context, id: Int): String? =
-        context.getSharedPreferences(RUNG, Context.MODE_PRIVATE).getString("$id", null)
-            ?: entry(context, id)?.payload
+        rung(context).getString("$id", null) ?: entry(context, id)?.payload
 
     private fun isRinging(context: Context, id: Int): Boolean =
         context.getSystemService(NotificationManager::class.java)
@@ -349,7 +390,7 @@ object AlarmEngine {
         val id = intent.getIntExtra(EXTRA_ID, -1)
         if (id < 0) return
         when (intent.action) {
-            ACTION_FALLBACK -> ring(context, id, opened = false)
+            ACTION_FALLBACK -> ring(context, id, Source.FALLBACK)
             ACTION_SNOOZE -> snooze(context, id, snoozeIdFor(id))
         }
     }

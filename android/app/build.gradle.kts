@@ -47,6 +47,21 @@ android {
             (project.findProperty("admobAppId") as String?)
                 ?.takeIf { it.isNotBlank() }
                 ?: "ca-app-pub-3940256099942544~3347511713"
+
+        // Backup push (docs/alarm-reliability.md): off unless the build is
+        // given the server's address and a Firebase project, e.g.
+        // -PpushServerUrl=https://… -PfirebaseAppId=1:…:android:…
+        fun prop(name: String) = (project.findProperty(name) as String?)?.trim() ?: ""
+        resValue("string", "readalarm_push_url", prop("pushServerUrl"))
+        resValue("string", "readalarm_push_key", prop("pushApiKey"))
+        if (prop("firebaseAppId").isNotEmpty()) {
+            // What the google-services plugin would generate; Firebase
+            // starts itself from these.
+            resValue("string", "google_app_id", prop("firebaseAppId"))
+            resValue("string", "google_api_key", prop("firebaseApiKey"))
+            resValue("string", "project_id", prop("firebaseProjectId"))
+            resValue("string", "gcm_defaultSenderId", prop("firebaseSenderId"))
+        }
     }
 
     signingConfigs {
@@ -92,4 +107,6 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // Backup push (PushBackup.kt).
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
 }

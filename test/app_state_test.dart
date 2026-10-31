@@ -581,6 +581,36 @@ void main() {
     });
   });
 
+  group('alarm test timing', () {
+    test('a test alarm the phone held back fails as late', () async {
+      final (state, fakes) = await demoState();
+      state.alarmTestPassedAt = null;
+      final start = DateTime(2026, 10, 30, 19, 3, 29);
+      await withClock(Clock.fixed(start), () => state.startAlarmTest());
+      // Rang 15 minutes after its time, as on the Tecno.
+      withClock(
+          Clock.fixed(start.add(const Duration(minutes: 16))),
+          () => state.openAlarm(AlarmLaunch(
+              fakes.alarms.once.last.$1, AlarmAction.open,
+              cold: true)));
+      expect(state.alarmTestStatus, AlarmTestStatus.late);
+      expect(state.alarmTestDelay, const Duration(minutes: 15));
+      expect(state.alarmsVerified, isFalse);
+
+      // On time the next try: passes.
+      final again = start.add(const Duration(minutes: 30));
+      await withClock(Clock.fixed(again), () => state.startAlarmTest());
+      withClock(
+          Clock.fixed(again.add(const Duration(seconds: 80))),
+          () => state.openAlarm(AlarmLaunch(
+              fakes.alarms.once.last.$1, AlarmAction.open,
+              cold: true)));
+      expect(state.alarmTestStatus, AlarmTestStatus.passed);
+      expect(state.alarmsVerified, isTrue);
+      state.dispose();
+    });
+  });
+
   group('free alarms', () {
     test('without Premium, alarms beyond the free one are switched off',
         () async {
