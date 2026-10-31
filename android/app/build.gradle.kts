@@ -19,6 +19,11 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
+    // For the backup push settings (resValue in defaultConfig).
+    buildFeatures {
+        resValues = true
+    }
+
     compileOptions {
         // Required by flutter_local_notifications for scheduled alarms.
         isCoreLibraryDesugaringEnabled = true
