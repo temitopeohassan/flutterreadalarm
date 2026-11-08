@@ -35,3 +35,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  config:
+    # iOS plugins through CocoaPods: with Swift Package Manager, Flutter set
+    # the plugins' package to iOS 13 while webview_flutter (used by AdMob)
+    # needs iOS 15, and the build failed.
+    enable-swift-package-manager: false
