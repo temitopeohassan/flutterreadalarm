@@ -138,6 +138,7 @@ on pull requests, and on demand (**Actions → Flutter CI → Run workflow**):
 | --- | --- |
 | Analyze & test | `dart format` check, `flutter analyze`, `flutter test test` |
 | Build APK | Release APKs (per-ABI and universal), uploaded as the `readalarm-apks-<sha>` artifact |
+| Build iOS app | Unsigned iPhone `.ipa` and an iOS Simulator build, uploaded as `readalarm-ios-<sha>` |
 | Regenerate screenshots | Runs `screenshot_test` and uploads the PNGs as `readalarm-screenshots-<sha>` |
 
 Download the APKs from the run's **Artifacts** section. CI builds are all
@@ -145,6 +146,15 @@ signed with the same test key (`android/app/test-signing.p12`, not secret), so
 each new APK installs over the last. Never use it for Play: build the Play
 bundle with your upload key (see above). `readalarm-diagnostics.apk` adds a
 "Generate Report" bar for sending diagnostics.
+
+The iOS build is unsigned: it runs in Xcode's iOS Simulator
+(`readalarm-ios-simulator.zip`: unzip, then drag `Runner.app` onto the
+simulator), but an iPhone installs it only once re-signed. Installing on
+iPhones (TestFlight, App Store) needs an Apple Developer account and its
+signing certificate and profile as Actions secrets. The alarm engine,
+standby, auto-start and diagnostics are Android code, so on iOS the app
+runs but alarms don't ring yet. iOS AdMob ids: `ADMOB_IOS_APP_ID`,
+`ADMOB_IOS_BANNER_ID`, `ADMOB_IOS_INTERSTITIAL_ID` secrets.
 
 ## Screenshots
 

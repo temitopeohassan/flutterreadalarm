@@ -8,13 +8,26 @@ import '../theme/app_colors.dart';
 
 /// AdMob ad units. Google's test units by default, so test builds never
 /// show real ads; the release build passes the real ones with
-/// --dart-define (see README). The app id is set in android/app's
-/// build.gradle.kts (admobAppId).
+/// --dart-define (see README). Android and iOS have separate units. The
+/// app id is set in android/app's build.gradle.kts (admobAppId) and in
+/// ios/Runner/Info.plist (GADApplicationIdentifier).
 class AdUnits {
-  static const banner = String.fromEnvironment('ADMOB_BANNER_ID',
+  static bool get _ios => defaultTargetPlatform == TargetPlatform.iOS;
+
+  static String get banner => _ios ? _iosBanner : _androidBanner;
+  static String get interstitial =>
+      _ios ? _iosInterstitial : _androidInterstitial;
+
+  static const _androidBanner = String.fromEnvironment('ADMOB_BANNER_ID',
       defaultValue: 'ca-app-pub-3940256099942544/9214589741');
-  static const interstitial = String.fromEnvironment('ADMOB_INTERSTITIAL_ID',
+  static const _androidInterstitial = String.fromEnvironment(
+      'ADMOB_INTERSTITIAL_ID',
       defaultValue: 'ca-app-pub-3940256099942544/1033173712');
+  static const _iosBanner = String.fromEnvironment('ADMOB_IOS_BANNER_ID',
+      defaultValue: 'ca-app-pub-3940256099942544/2435281174');
+  static const _iosInterstitial = String.fromEnvironment(
+      'ADMOB_IOS_INTERSTITIAL_ID',
+      defaultValue: 'ca-app-pub-3940256099942544/4411468910');
 }
 
 /// Ads for free users (PRD ADS-1..7): a banner on the main screens and an
