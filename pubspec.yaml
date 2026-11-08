@@ -17,7 +17,7 @@ dependencies:
   flutter_local_notifications: ^22.3.1
   flutter_timezone: ^5.1.0
   flutter_tts: ^4.2.5
-  google_mobile_ads: ^9.1.0
+  google_mobile_ads: ^9.2.0
   html: ^0.15.7
   in_app_purchase: ^3.3.1
   in_app_purchase_android: ^0.5.5
