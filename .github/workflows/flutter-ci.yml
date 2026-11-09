@@ -171,6 +171,9 @@ jobs:
       - name: Build for iPhone (unsigned)
         run: |
           flutter build ios --release --no-codesign $AD_ARGS
+          # The iOS 26 system alarms must be in the app, not compiled out.
+          otool -L build/ios/iphoneos/Runner.app/Runner | grep AlarmKit
+          ls build/ios/iphoneos/Runner.app/Metadata.appintents
           mkdir -p ios-out/Payload
           cp -R build/ios/iphoneos/Runner.app ios-out/Payload/
           (cd ios-out && zip -qry readalarm-ios-unsigned.ipa Payload && rm -rf Payload)
