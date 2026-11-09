@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../screens/onboarding/alarm_test_screen.dart';
 import '../screens/onboarding/oem_autostart_screen.dart';
 import '../screens/onboarding/recents_lock_screen.dart';
+import '../services/permission_service.dart';
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
 
@@ -37,20 +38,23 @@ Future<bool> ensureAlarmSetup(BuildContext context) async {
         content: Text(
           '${dropped ? 'Your phone removed ReadAlarm\'s alarm while it was '
               'closed. ' : ''}'
-          'Turn on auto-start and lock ReadAlarm in recent apps, then pass '
-          'the alarm test. Alarms can be set once the test passes.',
+          '${onIOS ? 'Pass the alarm test' : 'Turn on auto-start and lock '
+              'ReadAlarm in recent apps, then pass the alarm test'}. Alarms '
+          'can be set once the test passes.',
         ),
         actions: [
-          TextButton.icon(
-            onPressed: () => Navigator.pop(ctx, 'autoStart'),
-            icon: const Icon(Icons.power_settings_new_rounded),
-            label: const Text('Turn on auto-start'),
-          ),
-          TextButton.icon(
-            onPressed: () => Navigator.pop(ctx, 'recentsLock'),
-            icon: const Icon(Icons.lock_rounded),
-            label: const Text('Lock in recent apps'),
-          ),
+          if (!onIOS) ...[
+            TextButton.icon(
+              onPressed: () => Navigator.pop(ctx, 'autoStart'),
+              icon: const Icon(Icons.power_settings_new_rounded),
+              label: const Text('Turn on auto-start'),
+            ),
+            TextButton.icon(
+              onPressed: () => Navigator.pop(ctx, 'recentsLock'),
+              icon: const Icon(Icons.lock_rounded),
+              label: const Text('Lock in recent apps'),
+            ),
+          ],
           TextButton.icon(
             onPressed: () => Navigator.pop(ctx, 'alarmTest'),
             icon: const Icon(Icons.alarm_on_rounded),

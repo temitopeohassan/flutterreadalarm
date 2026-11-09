@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/permission_service.dart';
 import '../../state/app_state.dart';
 import 'onboarding_page.dart';
 
@@ -14,9 +15,15 @@ class NotificationsPermissionScreen extends StatelessWidget {
     return OnboardingPage(
       icon: Icons.notifications_active_rounded,
       granted: granted,
-      title: 'Control reading from your lock screen',
-      body: 'Notifications let you pause, stop or snooze a session without '
-          'unlocking your phone.',
+      // On iPhone, the alarm itself comes as a notification.
+      title: onIOS
+          ? 'Get your reading alarms'
+          : 'Control reading from your lock screen',
+      body: onIOS
+          ? 'Your reading alarms ring as notifications, with Start reading '
+              'and Snooze buttons on the lock screen.'
+          : 'Notifications let you pause, stop or snooze a session without '
+              'unlocking your phone.',
       primaryLabel: granted ? 'Continue' : 'Allow notifications',
       onPrimary: () async {
         if (!granted) await state.requestPermission('notifications');
@@ -24,8 +31,11 @@ class NotificationsPermissionScreen extends StatelessWidget {
       },
       secondaryLabel: granted ? null : 'Skip for now',
       onSecondary: onNext,
-      skipConsequence:
-          granted ? null : 'Without this, you won\'t see reading controls.',
+      skipConsequence: granted
+          ? null
+          : onIOS
+              ? 'Without this, your alarms can\'t ring.'
+              : 'Without this, you won\'t see reading controls.',
     );
   }
 }

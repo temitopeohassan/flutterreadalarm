@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../../models/reading_alarm.dart';
+import '../../services/permission_service.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
@@ -66,13 +67,22 @@ class _AlarmTestScreenState extends State<AlarmTestScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('ReadAlarm will close now'),
-        content: const Text(
-          'This checks an alarm can open ReadAlarm when it\'s closed.\n\n'
-          '1. ReadAlarm closes.\n'
-          '2. Lock your phone and wait.\n'
-          '3. In about a minute the test alarm rings and opens ReadAlarm.\n\n'
-          'If nothing rings within 2 minutes, open ReadAlarm again: it will '
-          'say what to check.',
+        content: Text(
+          onIOS
+              ? 'This checks your alarm rings when ReadAlarm is closed.\n\n'
+                  '1. ReadAlarm closes.\n'
+                  '2. Lock your iPhone and wait.\n'
+                  '3. In about a minute the test alarm rings. Tap Read on the '
+                  'alarm (or the notification) to come back.\n\n'
+                  'If nothing rings within 2 minutes, open ReadAlarm again: it '
+                  'will say what to check.'
+              : 'This checks an alarm can open ReadAlarm when it\'s closed.\n\n'
+                  '1. ReadAlarm closes.\n'
+                  '2. Lock your phone and wait.\n'
+                  '3. In about a minute the test alarm rings and opens '
+                  'ReadAlarm.\n\n'
+                  'If nothing rings within 2 minutes, open ReadAlarm again: it '
+                  'will say what to check.',
         ),
         actions: [
           TextButton(
@@ -103,8 +113,8 @@ class _AlarmTestScreenState extends State<AlarmTestScreen> {
           Icons.alarm_rounded,
           'Check your alarm works',
           'Tap Start test. ReadAlarm sets an alarm for one minute from now and '
-              'closes itself. Lock your phone and wait: the alarm should ring '
-              'and open ReadAlarm.',
+              'closes itself. Lock your phone and wait: the alarm should ring'
+              '${onIOS ? '.' : ' and open ReadAlarm.'}',
         ),
       AlarmTestStatus.waiting => (
           Icons.hourglass_top_rounded,
@@ -115,8 +125,11 @@ class _AlarmTestScreenState extends State<AlarmTestScreen> {
       AlarmTestStatus.passed => (
           Icons.check_rounded,
           'Your alarms work',
-          'The test alarm opened ReadAlarm while it was closed, so your '
-              'reading alarms will ring on this phone.',
+          onIOS
+              ? 'The test alarm rang while ReadAlarm was closed, so your '
+                  'reading alarms will ring on this iPhone.'
+              : 'The test alarm opened ReadAlarm while it was closed, so your '
+                  'reading alarms will ring on this phone.',
         ),
       AlarmTestStatus.ranWhileOpen => (
           Icons.refresh_rounded,
@@ -127,16 +140,23 @@ class _AlarmTestScreenState extends State<AlarmTestScreen> {
       AlarmTestStatus.late => (
           Icons.schedule_rounded,
           'The alarm rang ${state.alarmTestDelay?.inMinutes ?? 'some'} minutes late',
-          'Your phone held the alarm back while ReadAlarm was closed. Keep the '
-              '"Next reading" notification on, check auto-start and the lock '
-              'in recent apps, then test again.',
+          onIOS
+              ? 'Your iPhone held the alarm back. Check that ReadAlarm\'s '
+                  'notifications are on and not delivered in a summary '
+                  '(Settings → Notifications → ReadAlarm), then test again.'
+              : 'Your phone held the alarm back while ReadAlarm was closed. Keep '
+                  'the "Next reading" notification on, check auto-start and the '
+                  'lock in recent apps, then test again.',
         ),
       AlarmTestStatus.failed => (
           Icons.error_outline_rounded,
-          'The alarm didn\'t open ReadAlarm',
-          'Your phone stopped the alarm while ReadAlarm was closed. Check that '
-              'auto-start is on and ReadAlarm is locked in recent apps, then '
-              'try again.',
+          onIOS ? 'The alarm didn\'t ring' : 'The alarm didn\'t open ReadAlarm',
+          onIOS
+              ? 'Check that notifications and alarms are allowed for ReadAlarm '
+                  '(Settings → ReadAlarm), then try again.'
+              : 'Your phone stopped the alarm while ReadAlarm was closed. Check '
+                  'that auto-start is on and ReadAlarm is locked in recent apps, '
+                  'then try again.',
         ),
     };
 

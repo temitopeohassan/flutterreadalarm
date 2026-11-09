@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/permission_service.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../paywall_screen.dart';
@@ -26,7 +27,9 @@ class OnboardingFlow extends StatefulWidget {
 class _OnboardingFlowState extends State<OnboardingFlow> {
   late final PageController _controller;
   late int _page;
-  static const _count = 8;
+
+  /// iPhones skip the Android-only steps (battery, auto-start, lock).
+  static int get _count => onIOS ? 5 : 8;
   static const _autoStartPage = 4;
 
   bool _started = false;
@@ -133,13 +136,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   WelcomeScreen(onNext: _next),
                   NotificationsPermissionScreen(onNext: _next),
                   ExactAlarmPermissionScreen(onNext: _next),
-                  BatteryOptimizationScreen(onNext: _next),
-                  OemAutostartScreen(onNext: _next),
-                  RecentsLockScreen(onNext: _next),
+                  if (!onIOS) ...[
+                    BatteryOptimizationScreen(onNext: _next),
+                    OemAutostartScreen(onNext: _next),
+                    RecentsLockScreen(onNext: _next),
+                  ],
                   FirstBookScreen(onNext: _next),
                   AlarmTestScreen(
                     onPassed: _finish,
-                    onCheckSettings: _checkSettings,
+                    onCheckSettings: onIOS ? null : _checkSettings,
                   ),
                 ],
               ),

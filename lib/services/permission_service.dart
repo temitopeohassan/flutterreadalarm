@@ -7,6 +7,13 @@ import 'package:permission_handler/permission_handler.dart';
 /// Settings → Alarm health. 'autoStart' and 'recentsLock' have no Android
 /// API: the app tracks the user's confirmation, and 'alarmTest' checks the
 /// result (an alarm opened the app from closed).
+/// Whether this is an iPhone (or iPad).
+bool get onIOS => defaultTargetPlatform == TargetPlatform.iOS;
+
+/// Android-only steps: iPhones don't close apps' alarms, so these don't
+/// apply there (reported as granted, and not shown).
+const androidOnlyPermissionKeys = {'battery', 'autoStart', 'recentsLock'};
+
 const permissionKeys = [
   'notifications',
   'exactAlarm',
@@ -46,8 +53,20 @@ enum AutoStartPage {
 }
 
 class AndroidPermissionService implements PermissionService {
+  /// iPhone: notifications, and system alarms (AlarmKit, iOS 26+) as
+  /// 'exactAlarm' (AlarmEngine.swift).
+  static const _iosAlarms = MethodChannel('readalarm/alarms');
+
   @override
   Future<Map<String, bool>> status() async {
+    if (onIOS) {
+      final s = await _iosAlarms.invokeMapMethod<String, bool>('permissions');
+      return {
+        'notifications': s?['notifications'] ?? false,
+        'exactAlarm': s?['alarms'] ?? false,
+        'battery': true,
+      };
+    }
     if (defaultTargetPlatform != TargetPlatform.android) {
       return {'notifications': true, 'exactAlarm': true, 'battery': true};
     }
@@ -60,6 +79,13 @@ class AndroidPermissionService implements PermissionService {
 
   @override
   Future<void> request(String key) async {
+    if (onIOS) {
+      if (key == 'notifications' || key == 'exactAlarm') {
+        await _iosAlarms.invokeMethod<bool>('requestPermission',
+            {'key': key == 'exactAlarm' ? 'alarms' : 'notifications'});
+      }
+      return;
+    }
     switch (key) {
       case 'notifications':
         await Permission.notification.request();

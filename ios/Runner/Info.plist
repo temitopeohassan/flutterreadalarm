@@ -35,6 +35,11 @@
 			<string>cstr6suwn9.skadnetwork</string>
 		</dict>
 	</array>
+	<!-- iOS 26+: reading alarms ring as real alarms (AlarmKit). -->
+	<key>NSAlarmKitUsageDescription</key>
+	<string>ReadAlarm rings your reading alarms like an alarm clock, even in silent mode.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<!-- Reading aloud continues with the screen locked. -->
 	<key>UIBackgroundModes</key>
 	<array>

@@ -35,6 +35,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # The iPhone alarm sound (ios/Runner/AlarmEngine.swift).
+    - assets/sounds/readalarm_alarm.wav
   config:
     # iOS plugins through CocoaPods: with Swift Package Manager, Flutter set
     # the plugins' package to iOS 13 while webview_flutter (used by AdMob)

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -115,6 +116,50 @@ void main() {
     expect(state.onboardingDone, isTrue);
     expect(find.byType(MainShell), findsOneWidget);
     await close(tester, state);
+  });
+
+  testWidgets('iPhone onboarding: no Android steps; a ring later counts',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      final (state, fakes) =
+          await demoState(onboardingDone: false, emptyLibrary: true);
+      await tester.pumpWidget(ReadAlarmApp(state: state));
+
+      await tapText(tester, 'Get started');
+      expect(find.text('Get your reading alarms'), findsOneWidget);
+      await tapText(tester, 'Allow notifications');
+      expect(find.text('Ring like an alarm clock'), findsOneWidget);
+      await tapText(tester, 'Allow alarms');
+      expect(fakes.permissions.requested, ['notifications', 'exactAlarm']);
+
+      // Straight to the book: no battery, auto-start or lock steps.
+      expect(find.text('Add your first book'), findsOneWidget);
+      expect(state.permissions['autoStart'], isTrue);
+      expect(state.permissions['recentsLock'], isTrue);
+      await tapText(tester, 'Choose a PDF or EPUB');
+      await tapText(tester, 'Choose EPUB');
+      await tapText(tester, 'Done');
+      await tapText(tester, 'Continue');
+
+      await tapText(tester, 'Start test');
+      await tapText(tester, 'Close ReadAlarm and test');
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(state.onboardingStep, 4);
+      // ReadAlarm opened 5 minutes after the alarm rang on time: passes,
+      // timed by the ring, not by the opening.
+      final started = state.alarmTestStartedAt!;
+      fakes.alarms.onLaunch!(AlarmLaunch(
+          fakes.alarms.once.single.$1, AlarmAction.open,
+          cold: true, rangAt: started.add(const Duration(seconds: 62))));
+      await tester.pumpAndSettle();
+      expect(find.text('Your alarms work'), findsOneWidget);
+      expect(find.text('Check auto-start and recent apps'), findsNothing);
+      await close(tester, state);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('a failed alarm test says so; setup resumes at the test',

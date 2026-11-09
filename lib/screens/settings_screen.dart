@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/ads_service.dart';
+import '../services/permission_service.dart';
 import '../services/speech.dart';
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
@@ -22,6 +23,13 @@ class SettingsScreen extends StatelessWidget {
     'autoStart': ('Auto-start', 'Confirmed by the alarm test'),
     'recentsLock': ('Locked in recent apps', 'Confirmed by the alarm test'),
     'alarmTest': ('Alarm test', 'An alarm opens ReadAlarm when it\'s closed'),
+  };
+
+  /// iPhone: no battery, auto-start or lock settings.
+  static const _iosPermissionLabels = {
+    'notifications': ('Notifications', 'Alarms and reading controls'),
+    'exactAlarm': ('Alarms', 'Ring like an alarm clock, even on silent'),
+    'alarmTest': ('Alarm test', 'An alarm rings when ReadAlarm is closed'),
   };
 
   /// Fixes a missing permission. Auto-start has no system prompt, so it
@@ -132,7 +140,9 @@ class SettingsScreen extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Column(
                     children: [
-                      for (final e in _permissionLabels.entries)
+                      for (final e
+                          in (onIOS ? _iosPermissionLabels : _permissionLabels)
+                              .entries)
                         ListTile(
                           leading: Icon(
                             state.permissions[e.key]!

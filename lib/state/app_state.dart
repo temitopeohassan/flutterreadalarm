@@ -487,8 +487,9 @@ class AppState extends ChangeNotifier {
   /// isn't proof.
   void _ownChecks() {
     final verified = alarmsVerified;
-    permissions['autoStart'] = verified;
-    permissions['recentsLock'] = verified;
+    // iPhones have neither setting: alarms aren't stopped that way there.
+    permissions['autoStart'] = onIOS || verified;
+    permissions['recentsLock'] = onIOS || verified;
     permissions['alarmTest'] = verified;
   }
 
@@ -747,10 +748,11 @@ class AppState extends ChangeNotifier {
       final now = clock.now();
       final lateBy = started == null
           ? Duration.zero
-          : now.difference(started.add(const Duration(minutes: 1)));
+          : (launch.rangAt ?? now)
+              .difference(started.add(const Duration(minutes: 1)));
       if (launch.cold && lateBy > alarmTestLateLimit) {
         // Rang, but held back by the phone: alarms would ring late.
-        alarmTestLateAt = now;
+        alarmTestLateAt = launch.rangAt ?? now;
         alarmTestRanWhileOpen = false;
         logEvent('Alarm test failed: the alarm rang ${lateBy.inMinutes} min '
             'late (the phone held it back)');

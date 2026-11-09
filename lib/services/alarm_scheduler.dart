@@ -75,9 +75,14 @@ class AlarmPayload {
 enum AlarmAction { open, start, snooze }
 
 class AlarmLaunch {
-  const AlarmLaunch(this.payload, this.action, {this.cold = false});
+  const AlarmLaunch(this.payload, this.action,
+      {this.cold = false, this.rangAt});
   final AlarmPayload payload;
   final AlarmAction action;
+
+  /// When the alarm rang, if the app was opened later (iPhone: the user
+  /// opens ReadAlarm after the alarm rang). Null: just now.
+  final DateTime? rangAt;
 
   /// The alarm started the app from closed (proof alarms work on this
   /// phone even when the app isn't running).
@@ -149,7 +154,8 @@ int _notificationId(String alarmId, int slot) {
 
 /// Schedules alarms with Android's alarm clock (see AlarmEngine.kt): at
 /// the alarm time Android opens ReadAlarm's screen directly, which works
-/// even when the app was closed, and the app rings.
+/// even when the app was closed, and the app rings. On iPhone, the same
+/// channel sets system alarms or alarm notifications (AlarmEngine.swift).
 class NotificationAlarmScheduler implements AlarmScheduler {
   static const _channel = MethodChannel('readalarm/alarms');
 
@@ -161,7 +167,9 @@ class NotificationAlarmScheduler implements AlarmScheduler {
       if (launch != null) onLaunch(launch);
     });
     // Earlier versions scheduled through the notification plugin: remove
-    // those so nothing rings twice.
+    // those so nothing rings twice. (Android only: on iPhone this would
+    // remove the alarm engine's own notifications.)
+    if (defaultTargetPlatform != TargetPlatform.android) return;
     try {
       final plugin = FlutterLocalNotificationsPlugin();
       await plugin.initialize(
@@ -184,7 +192,11 @@ class NotificationAlarmScheduler implements AlarmScheduler {
       'snooze' => AlarmAction.snooze,
       _ => AlarmAction.open,
     };
-    return AlarmLaunch(payload, action, cold: data['cold'] == true);
+    final rangAt = data['rangAt'];
+    return AlarmLaunch(payload, action,
+        cold: data['cold'] == true,
+        rangAt:
+            rangAt is int ? DateTime.fromMillisecondsSinceEpoch(rangAt) : null);
   }
 
   Future<T?> _call<T>(String method, [Object? args]) async {
