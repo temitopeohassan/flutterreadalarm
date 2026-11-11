@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/main.dart';
@@ -32,6 +33,27 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     state.dispose();
   }
+
+  testWidgets('iPhone onboarding skips the Android-only steps', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      final (state, fakes) =
+          await demoState(onboardingDone: false, emptyLibrary: true);
+      await tester.pumpWidget(ReadAlarmApp(state: state));
+      await tapText(tester, 'Get started');
+      expect(find.text('Get your reading alarms'), findsOneWidget);
+      await tapText(tester, 'Allow notifications');
+      expect(fakes.permissions.requested, ['notifications']);
+      // Straight to the first book: no alarm, battery or auto-start steps.
+      expect(find.text('Add your first book'), findsOneWidget);
+      expect(state.permissions['autoStart'], isTrue);
+      await state.reader.finish('stop');
+      await tester.pumpWidget(const SizedBox());
+      state.dispose();
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 
   testWidgets('onboarding: permissions, first book, test alarm, paywall',
       (tester) async {

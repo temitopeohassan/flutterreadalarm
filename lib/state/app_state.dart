@@ -192,7 +192,8 @@ class AppState extends ChangeNotifier {
     if (json == null || reader.active || _disposed) return;
     _restore(json);
     _texts.removeWhere((id, _) => _findBook(id) == null);
-    permissions['autoStart'] = autoStartConfirmed;
+    // iPhones have no auto-start setting.
+    permissions['autoStart'] = onIOS || autoStartConfirmed;
     notifyListeners();
     await _applyFreeAlarmLimit();
   }
@@ -348,7 +349,8 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('Permission check failed: $e');
     }
-    permissions['autoStart'] = autoStartConfirmed;
+    // iPhones have no auto-start setting.
+    permissions['autoStart'] = onIOS || autoStartConfirmed;
     final missing = [
       for (final e in permissions.entries)
         if (!e.value) e.key,

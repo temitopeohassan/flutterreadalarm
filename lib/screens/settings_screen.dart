@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/ads_service.dart';
 import '../services/speech.dart';
+import '../services/permission_service.dart';
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common.dart';
@@ -134,7 +135,8 @@ class SettingsScreen extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Column(
                     children: [
-                      for (final e in _permissionLabels.entries)
+                      for (final e in _permissionLabels.entries.where((e) =>
+                          !onIOS || !androidOnlyPermissionKeys.contains(e.key)))
                         ListTile(
                           leading: Icon(
                             state.permissions[e.key]!

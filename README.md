@@ -108,6 +108,7 @@ on pull requests, and on demand (**Actions → Flutter CI → Run workflow**):
 | --- | --- |
 | Analyze & test | `dart format` check, `flutter analyze`, `flutter test test` |
 | Build APK | Release APKs (per-ABI and universal), uploaded as the `readalarm-apks-<sha>` artifact |
+| Build iOS app | Unsigned iPhone `.ipa` (for SideStore) and an iOS Simulator build, uploaded as `readalarm-ios-<sha>` |
 | Regenerate screenshots | Runs `screenshot_test` and uploads the PNGs as `readalarm-screenshots-<sha>` |
 
 Download the APKs from the run's **Artifacts** section. CI builds are all
@@ -128,3 +129,13 @@ flutter test screenshot_test
 | | | | |
 | --- | --- | --- | --- |
 | ![Welcome](screenshots/01_onboarding_welcome.png) | ![Home](screenshots/13_home.png) | ![Set alarm](screenshots/17_set_alarm.png) | ![Now playing](screenshots/19_now_playing.png) |
+
+## iPhone (SideStore)
+
+CI's `readalarm-ios-unsigned.ipa` is unsigned: SideStore signs it with the
+tester's Apple ID when installing. On iPhone, alarms are scheduled the same
+way as on Android (flutter_local_notifications) and ring as notifications
+with a 30-second alarm sound (`ios/Runner/readalarm_alarm.wav`) and Start
+reading / Snooze buttons, also when ReadAlarm is closed. Notifications
+follow the silent switch and Focus. Setup skips the Android-only steps.
+

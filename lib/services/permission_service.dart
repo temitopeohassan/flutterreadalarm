@@ -34,9 +34,29 @@ enum AutoStartPage {
   appInfo,
 }
 
+/// Whether this is an iPhone (or iPad).
+bool get onIOS => defaultTargetPlatform == TargetPlatform.iOS;
+
+/// Android-only settings: they don't exist on iPhone, which reports them
+/// as granted and doesn't show them.
+const androidOnlyPermissionKeys = {'exactAlarm', 'battery', 'autoStart'};
+
+IOSFlutterLocalNotificationsPlugin? get _iosNotifications =>
+    FlutterLocalNotificationsPlugin().resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+
 class AndroidPermissionService implements PermissionService {
   @override
   Future<Map<String, bool>> status() async {
+    if (onIOS) {
+      // The alarm rings as a notification on iPhone.
+      final options = await _iosNotifications?.checkPermissions();
+      return {
+        'notifications': options?.isEnabled ?? false,
+        'exactAlarm': true,
+        'battery': true,
+      };
+    }
     if (defaultTargetPlatform != TargetPlatform.android) {
       return {'notifications': true, 'exactAlarm': true, 'battery': true};
     }
@@ -49,6 +69,13 @@ class AndroidPermissionService implements PermissionService {
 
   @override
   Future<void> request(String key) async {
+    if (onIOS) {
+      if (key == 'notifications') {
+        await _iosNotifications?.requestPermissions(
+            alert: true, badge: true, sound: true);
+      }
+      return;
+    }
     switch (key) {
       case 'notifications':
         await Permission.notification.request();

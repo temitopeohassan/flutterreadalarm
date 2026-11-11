@@ -145,8 +145,27 @@ int _notificationId(String alarmId, int slot) {
 const _channelId = 'reading_alarms';
 const _actionStart = 'start';
 const _actionSnooze = 'snooze';
-const _initSettings = InitializationSettings(
-  android: AndroidInitializationSettings('ic_stat_readalarm'),
+const _iosCategory = 'readalarm_alarm';
+
+/// iPhone: the alarm's sound (in the app bundle, up to 30 seconds: iOS's
+/// limit for notification sounds).
+const _iosSound = 'readalarm_alarm.wav';
+
+final _initSettings = InitializationSettings(
+  android: const AndroidInitializationSettings('ic_stat_readalarm'),
+  // Permission is asked for in onboarding, not at start-up.
+  iOS: DarwinInitializationSettings(
+    requestAlertPermission: false,
+    requestBadgePermission: false,
+    requestSoundPermission: false,
+    notificationCategories: [
+      DarwinNotificationCategory(_iosCategory, actions: [
+        DarwinNotificationAction.plain(_actionStart, 'Start reading',
+            options: {DarwinNotificationActionOption.foreground}),
+        DarwinNotificationAction.plain(_actionSnooze, 'Snooze 10 min'),
+      ]),
+    ],
+  ),
 );
 
 NotificationDetails _alarmDetails() => NotificationDetails(
@@ -170,6 +189,15 @@ NotificationDetails _alarmDetails() => NotificationDetails(
               showsUserInterface: true),
           AndroidNotificationAction(_actionSnooze, 'Snooze 10 min'),
         ],
+      ),
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBanner: true,
+        presentList: true,
+        presentSound: true,
+        sound: _iosSound,
+        categoryIdentifier: _iosCategory,
+        interruptionLevel: InterruptionLevel.timeSensitive,
       ),
     );
 

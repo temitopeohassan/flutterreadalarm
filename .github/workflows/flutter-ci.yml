@@ -106,6 +106,59 @@ jobs:
           path: build/app/outputs/flutter-apk/*.apk
           retention-days: 30
 
+  # The iOS app, unsigned, for SideStore (which signs it with the tester's
+  # own Apple ID when installing):
+  # - readalarm-ios-unsigned.ipa: open it in SideStore on the iPhone.
+  # - readalarm-ios-simulator.zip: runs in Xcode's iOS Simulator on a Mac.
+  build-ios:
+    name: Build iOS app
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Google's test ads unless the repository has the real iOS AdMob ids.
+      - name: AdMob ids
+        env:
+          APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
+          BANNER: ${{ secrets.ADMOB_IOS_BANNER_ID }}
+          INTERSTITIAL: ${{ secrets.ADMOB_IOS_INTERSTITIAL_ID }}
+        run: |
+          [ -n "$APP_ID" ] && /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier $APP_ID" ios/Runner/Info.plist
+          args=""
+          [ -n "$BANNER" ] && args="$args --dart-define=ADMOB_IOS_BANNER_ID=$BANNER"
+          [ -n "$INTERSTITIAL" ] && args="$args --dart-define=ADMOB_IOS_INTERSTITIAL_ID=$INTERSTITIAL"
+          echo "AD_ARGS=$args" >> "$GITHUB_ENV"
+
+      - name: Build for iPhone (unsigned)
+        run: |
+          flutter build ios --release --no-codesign $AD_ARGS
+          # The alarm sound must be in the app.
+          ls build/ios/iphoneos/Runner.app/readalarm_alarm.wav
+          mkdir -p ios-out/Payload
+          cp -R build/ios/iphoneos/Runner.app ios-out/Payload/
+          (cd ios-out && zip -qry readalarm-ios-unsigned.ipa Payload && rm -rf Payload)
+
+      - name: Build for the iOS Simulator
+        run: |
+          flutter build ios --simulator --debug $AD_ARGS
+          (cd build/ios/iphonesimulator && zip -qry "$GITHUB_WORKSPACE/ios-out/readalarm-ios-simulator.zip" Runner.app)
+
+      - name: Upload iOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: readalarm-ios-${{ github.sha }}
+          path: ios-out/*
+          retention-days: 30
+
   # Opens the release APK on an Android emulator: fresh (onboarding), and
   # past onboarding, where ads and billing start. Fails with the crash log
   # if the app closes.
