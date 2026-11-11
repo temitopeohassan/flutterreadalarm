@@ -4,24 +4,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// Keys of the permissions the alarm needs, as shown in onboarding and in
-/// Settings → Alarm health. 'autoStart' and 'recentsLock' have no Android
-/// API: the app tracks the user's confirmation, and 'alarmTest' checks the
-/// result (an alarm opened the app from closed).
-/// Whether this is an iPhone (or iPad).
-bool get onIOS => defaultTargetPlatform == TargetPlatform.iOS;
-
-/// Android-only steps: iPhones don't close apps' alarms, so these don't
-/// apply there (reported as granted, and not shown).
-const androidOnlyPermissionKeys = {'battery', 'autoStart', 'recentsLock'};
-
-const permissionKeys = [
-  'notifications',
-  'exactAlarm',
-  'battery',
-  'autoStart',
-  'recentsLock',
-  'alarmTest',
-];
+/// Settings → Alarm health. 'autoStart' has no Android API; the app tracks
+/// the user's confirmation itself.
+const permissionKeys = ['notifications', 'exactAlarm', 'battery', 'autoStart'];
 
 abstract class PermissionService {
   /// Current status of every key except 'autoStart'.
@@ -35,9 +20,6 @@ abstract class PermissionService {
 
   /// Opens the phone maker's auto-start setting, or the closest page found.
   Future<AutoStartPage> openAutoStartSettings();
-
-  /// For support: the phone's model and the auto-start screens found on it.
-  Future<String> autoStartReport();
 }
 
 /// Which page [PermissionService.openAutoStartSettings] opened.
@@ -53,20 +35,8 @@ enum AutoStartPage {
 }
 
 class AndroidPermissionService implements PermissionService {
-  /// iPhone: notifications, and system alarms (AlarmKit, iOS 26+) as
-  /// 'exactAlarm' (AlarmEngine.swift).
-  static const _iosAlarms = MethodChannel('readalarm/alarms');
-
   @override
   Future<Map<String, bool>> status() async {
-    if (onIOS) {
-      final s = await _iosAlarms.invokeMapMethod<String, bool>('permissions');
-      return {
-        'notifications': s?['notifications'] ?? false,
-        'exactAlarm': s?['alarms'] ?? false,
-        'battery': true,
-      };
-    }
     if (defaultTargetPlatform != TargetPlatform.android) {
       return {'notifications': true, 'exactAlarm': true, 'battery': true};
     }
@@ -79,13 +49,6 @@ class AndroidPermissionService implements PermissionService {
 
   @override
   Future<void> request(String key) async {
-    if (onIOS) {
-      if (key == 'notifications' || key == 'exactAlarm') {
-        await _iosAlarms.invokeMethod<bool>('requestPermission',
-            {'key': key == 'exactAlarm' ? 'alarms' : 'notifications'});
-      }
-      return;
-    }
     switch (key) {
       case 'notifications':
         await Permission.notification.request();
@@ -122,15 +85,6 @@ class AndroidPermissionService implements PermissionService {
     }
     await openAppSettingsPage();
     return AutoStartPage.appInfo;
-  }
-
-  @override
-  Future<String> autoStartReport() async {
-    try {
-      return await _autoStart.invokeMethod<String>('report') ?? '';
-    } catch (e) {
-      return 'No report: $e';
-    }
   }
 }
 

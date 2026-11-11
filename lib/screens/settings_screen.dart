@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import '../services/ads_service.dart';
-import '../services/permission_service.dart';
 import '../services/speech.dart';
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common.dart';
 import '../widgets/navy_header.dart';
-import 'onboarding/alarm_test_screen.dart';
+import 'onboarding/oem_autostart_screen.dart';
 import 'diagnostics_screen.dart';
-import '../widgets/alarm_setup_gate.dart';
 import 'paywall_screen.dart';
 
 /// Screen — Settings: Premium, voice, permission health, privacy, purchases
@@ -20,27 +18,23 @@ class SettingsScreen extends StatelessWidget {
     'notifications': ('Notifications', 'Lock-screen reading controls'),
     'exactAlarm': ('Alarms and reminders', 'Start on the exact minute'),
     'battery': ('Background reading', 'Not stopped by battery saver'),
-    'autoStart': ('Auto-start', 'Confirmed by the alarm test'),
-    'recentsLock': ('Locked in recent apps', 'Confirmed by the alarm test'),
-    'alarmTest': ('Alarm test', 'An alarm opens ReadAlarm when it\'s closed'),
-  };
-
-  /// iPhone: no battery, auto-start or lock settings.
-  static const _iosPermissionLabels = {
-    'notifications': ('Notifications', 'Alarms and reading controls'),
-    'exactAlarm': ('Alarms', 'Ring like an alarm clock, even on silent'),
-    'alarmTest': ('Alarm test', 'An alarm rings when ReadAlarm is closed'),
+    'autoStart': ('Auto-start', 'Phone brand settings'),
   };
 
   /// Fixes a missing permission. Auto-start has no system prompt, so it
   /// opens the phone-brand guide instead.
   Future<void> _fix(BuildContext context, String key) async {
     final state = AppScope.of(context);
-    if (key == 'alarmTest') return AlarmTestScreen.open(context);
-    if (key != 'autoStart' && key != 'recentsLock') {
-      return state.requestPermission(key);
-    }
-    await openAlarmSetupStep(context, key);
+    if (key != 'autoStart') return state.requestPermission(key);
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (context) => Scaffold(
+        appBar: AppBar(
+          backgroundColor: AppColors.cream,
+          surfaceTintColor: Colors.transparent,
+        ),
+        body: OemAutostartScreen(onNext: () => Navigator.pop(context)),
+      ),
+    ));
   }
 
   @override
@@ -140,9 +134,7 @@ class SettingsScreen extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Column(
                     children: [
-                      for (final e
-                          in (onIOS ? _iosPermissionLabels : _permissionLabels)
-                              .entries)
+                      for (final e in _permissionLabels.entries)
                         ListTile(
                           leading: Icon(
                             state.permissions[e.key]!
@@ -161,6 +153,21 @@ class SettingsScreen extends StatelessWidget {
                                   child: const Text('Fix'),
                                 ),
                         ),
+                      ListTile(
+                        leading: const Icon(Icons.timer_outlined,
+                            color: AppColors.navy),
+                        title: const Text('Run 1-minute test alarm'),
+                        onTap: () async {
+                          final scheduled = await state.scheduleTestAlarm();
+                          if (!context.mounted) return;
+                          showSnack(
+                              context,
+                              scheduled
+                                  ? 'Test alarm set for 1 minute from now. '
+                                      'Lock your phone.'
+                                  : 'Add a book in Library first.');
+                        },
+                      ),
                     ],
                   ),
                 ),

@@ -41,36 +41,6 @@ the app comes back, so a cancelled or lapsed subscription returns the app to
 the free tier. Pending payments (e.g. cash) unlock Premium once Play
 confirms them.
 
-## Alarms
-
-Alarms are scheduled the way clock apps schedule theirs
-(`android/app/src/main/kotlin/.../AlarmEngine.kt`): `AlarmManager.setAlarmClock`
-with ReadAlarm's screen as the thing to open, so at the alarm time Android
-opens ReadAlarm directly, even when it was closed, and it rings. A broadcast
-20 seconds later is a fallback in case a phone blocks that. Alarms are stored
-and put back after a reboot, an app update or a change of time or time zone.
-
-While an alarm is set, a **standby** foreground service keeps ReadAlarm
-running, with a quiet "Next reading: …" notification, so phones don't close
-it or hold back its alarms. A **backup push** from ReadAlarm's own PHP
-server (`server/`) can also ring each alarm through Firebase; it's off until
-configured. See [docs/alarm-reliability.md](docs/alarm-reliability.md).
-
-Phone makers' power managers (Tecno, Infinix, Xiaomi and others) can still
-stop alarms of closed apps, and Android doesn't let an app read their
-settings. So setup can't be skipped past the alarm-critical steps:
-
-1. **Auto-start** (phone-brand guide, opening the maker's own screen).
-2. **Lock in recent apps.**
-3. **The alarm test:** ReadAlarm sets an alarm a minute ahead and closes
-   itself; setup continues only once that alarm opens ReadAlarm from closed,
-   within 2 minutes of its time (or the user chooses to continue anyway after a failure).
-
-Afterwards, each start checks with Android whether it still held every alarm.
-If the phone removed one, or the test hasn't passed, Home shows "Your alarm
-may not ring" with Fix (the alarm test), and Settings → Alarm health lists
-each check.
-
 ## Setting up ads and payments
 
 The app is built with **Google's test ads** and **placeholder product ids**.
@@ -138,7 +108,6 @@ on pull requests, and on demand (**Actions → Flutter CI → Run workflow**):
 | --- | --- |
 | Analyze & test | `dart format` check, `flutter analyze`, `flutter test test` |
 | Build APK | Release APKs (per-ABI and universal), uploaded as the `readalarm-apks-<sha>` artifact |
-| Build iOS app | Unsigned iPhone `.ipa` and an iOS Simulator build, uploaded as `readalarm-ios-<sha>` |
 | Regenerate screenshots | Runs `screenshot_test` and uploads the PNGs as `readalarm-screenshots-<sha>` |
 
 Download the APKs from the run's **Artifacts** section. CI builds are all
@@ -146,15 +115,6 @@ signed with the same test key (`android/app/test-signing.p12`, not secret), so
 each new APK installs over the last. Never use it for Play: build the Play
 bundle with your upload key (see above). `readalarm-diagnostics.apk` adds a
 "Generate Report" bar for sending diagnostics.
-
-The iOS build is unsigned: it runs in Xcode's iOS Simulator
-(`readalarm-ios-simulator.zip`: unzip, then drag `Runner.app` onto the
-simulator), but an iPhone installs it only once re-signed. Installing on
-iPhones (TestFlight, App Store) needs an Apple Developer account and its
-signing certificate and profile as Actions secrets. The alarm engine,
-standby, auto-start and diagnostics are Android code, so on iOS the app
-runs but alarms don't ring yet. iOS AdMob ids: `ADMOB_IOS_APP_ID`,
-`ADMOB_IOS_BANNER_ID`, `ADMOB_IOS_INTERSTITIAL_ID` secrets.
 
 ## Screenshots
 

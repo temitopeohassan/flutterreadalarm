@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../services/permission_service.dart';
 import '../../state/app_state.dart';
 import 'onboarding_page.dart';
 
@@ -14,28 +13,6 @@ class ExactAlarmPermissionScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final granted = state.permissions['exactAlarm']!;
-    // iPhone (iOS 26+): allow ReadAlarm's alarms to ring as system alarms,
-    // like the Clock app's, which ring even in silent mode.
-    if (onIOS) {
-      return OnboardingPage(
-        icon: Icons.alarm_on_rounded,
-        granted: granted,
-        title: 'Ring like an alarm clock',
-        body: 'Allow alarms so your reading alarm rings like the Clock app\'s: '
-            'loud, on the lock screen, even in silent mode or Focus.',
-        primaryLabel: granted ? 'Continue' : 'Allow alarms',
-        onPrimary: () async {
-          if (!granted) await state.requestPermission('exactAlarm');
-          onNext();
-        },
-        secondaryLabel: granted ? null : 'Skip for now',
-        onSecondary: onNext,
-        skipConsequence: granted
-            ? null
-            : 'Without this, alarms ring as notifications, which are silent '
-                'when your iPhone is on silent.',
-      );
-    }
     return OnboardingPage(
       icon: Icons.alarm_on_rounded,
       granted: granted,

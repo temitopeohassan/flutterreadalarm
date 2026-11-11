@@ -1,4 +1,0 @@
-# Secrets and data: never committed.
-config.php
-*service-account*.json
-data/

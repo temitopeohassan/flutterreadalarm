@@ -191,7 +191,6 @@ void main() {
       expect(fakes.permissions.requested,
           ['notifications', 'exactAlarm', 'battery']);
       expect(state.autoStartConfirmed, isTrue);
-      expect(state.recentsLockConfirmed, isTrue);
       expect(state.allPermissionsGranted, isTrue);
       state.dispose();
     });
@@ -232,10 +231,8 @@ void main() {
       expect(at.difference(DateTime.now()).inSeconds, closeTo(60, 2));
       state.dispose();
 
-      // Without a book it still rings (the alarm test needs no book).
-      final (empty, emptyFakes) = await demoState(emptyLibrary: true);
-      expect(await empty.scheduleTestAlarm(), isTrue);
-      expect(emptyFakes.alarms.once.single.$1.bookId, '');
+      final (empty, _) = await demoState(emptyLibrary: true);
+      expect(await empty.scheduleTestAlarm(), isFalse);
       empty.dispose();
     });
 
@@ -434,17 +431,6 @@ void main() {
       state.dispose();
     });
 
-    test('a dropped alarm marks alarms as not working', () async {
-      final (state, fakes) = await demoState();
-      expect(state.alarmsVerified, isTrue);
-      fakes.alarms.held['a1'] = {'Mon': false, 'Wed': false, 'Fri': false};
-      await state.resyncAlarms();
-      expect(state.alarmsDroppedAt, isNotNull);
-      expect(state.alarmsVerified, isFalse);
-      expect(state.permissions['alarmTest'], isFalse);
-      state.dispose();
-    });
-
     test('are scheduled again on resync', () async {
       final (state, fakes) = await demoState();
       fakes.alarms.dropAll();
@@ -511,102 +497,6 @@ void main() {
       await pumpEventQueue();
       expect(state.isPremium, isFalse);
       expect(state.billingNotice.value, contains('didn\'t go through'));
-      state.dispose();
-    });
-  });
-
-  group('alarm setup', () {
-    test('an update makes setup from an older version run again', () async {
-      final (state, fakes) = await demoState();
-      final json = state.toJson()
-        ..remove('onboardingVersion')
-        ..['onboardingStep'] = 5;
-      state.dispose();
-      await fakes.storage.saveState(json);
-
-      final restored = await AppState.load(fakes.services);
-      expect(restored.onboardingDone, isFalse);
-      expect(restored.onboardingStep, 0);
-      expect(restored.alarms, hasLength(2), reason: 'alarms kept');
-      expect(restored.books, isNotEmpty, reason: 'books kept');
-      restored.completeOnboarding();
-      await pumpEventQueue();
-      restored.dispose();
-
-      final again = await AppState.load(fakes.services);
-      expect(again.onboardingDone, isTrue, reason: 'only once');
-      again.dispose();
-    });
-
-    test('alarms can be set only once the alarm test has passed', () async {
-      final (state, fakes) = await demoState();
-      for (final a in List.of(state.alarms)) {
-        await state.deleteAlarm(a);
-      }
-      final alarm = ReadingAlarm(
-        id: 'new',
-        time: const TimeOfDay(hour: 21, minute: 0),
-        book: state.books.first,
-        durationMin: 15,
-        repeatDays: const {0},
-      );
-      // Tapping through both settings isn't enough.
-      state
-        ..alarmTestPassedAt = null
-        ..autoStartConfirmed = true
-        ..recentsLockConfirmed = true;
-      await state.refreshPermissions();
-      expect(state.permissions['autoStart'], isFalse);
-      expect(state.permissions['recentsLock'], isFalse);
-      expect(
-          (await state.saveAlarm(alarm)).status, AlarmSaveStatus.setupNeeded);
-      expect(state.alarms, isEmpty);
-
-      // The test passes (an alarm opened ReadAlarm from closed).
-      await state.startAlarmTest();
-      state.openAlarm(
-          AlarmLaunch(fakes.alarms.once.last.$1, AlarmAction.open, cold: true));
-      expect(state.permissions['autoStart'], isTrue);
-      expect(state.permissions['recentsLock'], isTrue);
-      expect((await state.saveAlarm(alarm)).status, AlarmSaveStatus.saved);
-      await state.toggleAlarm(state.alarms.single, false);
-
-      // The phone removes an alarm: confirmed no longer, so no switching on.
-      state.alarmsDroppedAt = DateTime.now();
-      expect(await state.toggleAlarm(state.alarms.single, true),
-          AlarmSaveStatus.setupNeeded);
-      expect(state.alarms.single.enabled, isFalse);
-      expect(fakes.alarms.scheduled, isEmpty);
-      state.dispose();
-    });
-  });
-
-  group('alarm test timing', () {
-    test('a test alarm the phone held back fails as late', () async {
-      final (state, fakes) = await demoState();
-      state.alarmTestPassedAt = null;
-      final start = DateTime(2026, 10, 30, 19, 3, 29);
-      await withClock(Clock.fixed(start), () => state.startAlarmTest());
-      // Rang 15 minutes after its time, as on the Tecno.
-      withClock(
-          Clock.fixed(start.add(const Duration(minutes: 16))),
-          () => state.openAlarm(AlarmLaunch(
-              fakes.alarms.once.last.$1, AlarmAction.open,
-              cold: true)));
-      expect(state.alarmTestStatus, AlarmTestStatus.late);
-      expect(state.alarmTestDelay, const Duration(minutes: 15));
-      expect(state.alarmsVerified, isFalse);
-
-      // On time the next try: passes.
-      final again = start.add(const Duration(minutes: 30));
-      await withClock(Clock.fixed(again), () => state.startAlarmTest());
-      withClock(
-          Clock.fixed(again.add(const Duration(seconds: 80))),
-          () => state.openAlarm(AlarmLaunch(
-              fakes.alarms.once.last.$1, AlarmAction.open,
-              cold: true)));
-      expect(state.alarmTestStatus, AlarmTestStatus.passed);
-      expect(state.alarmsVerified, isTrue);
       state.dispose();
     });
   });

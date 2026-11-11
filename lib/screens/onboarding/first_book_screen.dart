@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import '../../models/reading_alarm.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
@@ -6,10 +7,10 @@ import '../../widgets/book_cover.dart';
 import '../../widgets/common.dart';
 import '../../widgets/import_sheet.dart';
 
-/// Onboarding — add a first book (ONB-4). The alarm test comes next.
+/// Onboarding 6 — add a first book and run the 1-minute test alarm (ONB-4).
 class FirstBookScreen extends StatefulWidget {
-  const FirstBookScreen({super.key, required this.onNext});
-  final VoidCallback onNext;
+  const FirstBookScreen({super.key, required this.onFinish});
+  final VoidCallback onFinish;
 
   @override
   State<FirstBookScreen> createState() => _FirstBookScreenState();
@@ -17,22 +18,21 @@ class FirstBookScreen extends StatefulWidget {
 
 class _FirstBookScreenState extends State<FirstBookScreen> {
   BookInfo? _book;
-
-  bool _checkedLibrary = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_checkedLibrary) return;
-    _checkedLibrary = true;
-    // Setup done again after an update: the library already has books.
-    _book = AppScope.of(context).lastReadBook;
-  }
+  bool _testScheduled = false;
 
   Future<void> _import() async {
     final book = await ImportSheet.show(context);
     if (book == null || !mounted) return;
     setState(() => _book = book);
+  }
+
+  /// Rings in 60 s and reads the new book for a minute (ONB-4).
+  Future<void> _testAlarm() async {
+    final scheduled = await AppScope.of(context).scheduleTestAlarm();
+    if (!mounted || !scheduled) return;
+    setState(() => _testScheduled = true);
+    showSnack(
+        context, 'Test alarm set for 1 minute from now. Lock your phone.');
   }
 
   @override
@@ -55,7 +55,7 @@ class _FirstBookScreenState extends State<FirstBookScreen> {
         ),
         const SizedBox(height: 10),
         const Text(
-          'Your alarms will read it to you.',
+          'Then run a 1-minute test to check reading starts with your screen locked.',
           textAlign: TextAlign.center,
           style: TextStyle(
               fontSize: 15, height: 1.45, color: AppColors.textSecondary),
@@ -91,14 +91,37 @@ class _FirstBookScreenState extends State<FirstBookScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: OutlinedButton.icon(
+              onPressed: _testScheduled ? null : _testAlarm,
+              icon: Icon(
+                  _testScheduled ? Icons.check_rounded : Icons.timer_outlined),
+              label: Text(_testScheduled
+                  ? 'Test alarm scheduled'
+                  : 'Run 1-minute test alarm'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.orange,
+                side: const BorderSide(color: AppColors.orange, width: 1.4),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                textStyle: const TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
         ],
         const SizedBox(height: 32),
         PrimaryButton(
-          label: 'Continue',
-          onPressed: _book == null ? null : widget.onNext,
+          label: 'Finish setup',
+          onPressed: _book == null ? null : widget.onFinish,
         ),
         TextButton(
-          onPressed: widget.onNext,
+          onPressed: widget.onFinish,
           child: const Text('I\'ll add a book later',
               style: TextStyle(color: AppColors.textSecondary)),
         ),

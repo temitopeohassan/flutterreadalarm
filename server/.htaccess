@@ -1,3 +1,0 @@
-# If this whole folder ends up inside the web root, keep the code, the
-# config and the service account key private: only public/ is served.
-Require all denied

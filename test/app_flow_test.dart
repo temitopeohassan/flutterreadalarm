@@ -1,6 +1,4 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/main.dart';
 import 'package:readalarm/models/reading_alarm.dart';
@@ -35,7 +33,7 @@ void main() {
     state.dispose();
   }
 
-  testWidgets('onboarding: permissions, auto-start, lock, book, alarm test',
+  testWidgets('onboarding: permissions, first book, test alarm, paywall',
       (tester) async {
     final (state, fakes) =
         await demoState(onboardingDone: false, emptyLibrary: true);
@@ -64,15 +62,8 @@ void main() {
         find.textContaining('Look for Auto-start management'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5)); // Let the message go.
     await tester.pumpAndSettle();
-    // Auto-start can't be skipped.
-    expect(find.text('Skip for now'), findsNothing);
     await tapText(tester, 'I\'ve done this');
     expect(state.autoStartConfirmed, isTrue);
-
-    expect(find.text('Lock ReadAlarm in recent apps'), findsOneWidget);
-    expect(find.text('Skip for now'), findsNothing);
-    await tapText(tester, 'I\'ve locked it');
-    expect(state.recentsLockConfirmed, isTrue);
 
     expect(find.text('Add your first book'), findsOneWidget);
     await tapText(tester, 'Choose a PDF or EPUB');
@@ -82,30 +73,13 @@ void main() {
     await tapText(tester, 'Done');
     expect(state.books.single.title, 'The Quiet Morning');
 
-    await tapText(tester, 'Continue');
-
-    // The alarm test: sets an alarm a minute ahead and closes the app.
-    expect(find.text('Check your alarm works'), findsOneWidget);
-    await tapText(tester, 'Start test');
-    await tapText(tester, 'Close ReadAlarm and test');
-    await tester.pump(const Duration(seconds: 1));
-    expect(fakes.alarms.once.single.$1.alarmId, 'test');
-    expect(fakes.alarms.closed, 1);
-    await tester.pumpAndSettle();
-    expect(find.text('Waiting for the test alarm'), findsOneWidget);
-    expect(state.onboardingStep, 7, reason: 'resumes here after closing');
-
-    // The alarm opens ReadAlarm from closed: the test passes, no reading.
-    fakes.alarms.onLaunch!(
-        AlarmLaunch(fakes.alarms.once.single.$1, AlarmAction.open, cold: true));
-    await tester.pumpAndSettle();
-    expect(find.text('Your alarms work'), findsOneWidget);
-    expect(state.alarmsVerified, isTrue);
-    expect(find.text('Reading reminder'), findsNothing);
-    expect(fakes.alarms.dismissed, ['test']);
+    await tapText(tester, 'Run 1-minute test alarm');
+    expect(fakes.alarms.once.single.$1.bookId, state.books.single.id);
+    expect(find.text('Test alarm scheduled'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5)); // Let the snackbar go.
 
     // The paywall offers Premium (no free trial) or the free version.
-    await tapText(tester, 'Continue');
+    await tapText(tester, 'Finish setup');
     expect(find.text('ReadAlarm Premium'), findsOneWidget);
     expect(find.text('Continue'), findsOneWidget);
     expect(find.textContaining('trial'), findsNothing);
@@ -115,155 +89,6 @@ void main() {
 
     expect(state.onboardingDone, isTrue);
     expect(find.byType(MainShell), findsOneWidget);
-    await close(tester, state);
-  });
-
-  testWidgets('iPhone onboarding: no Android steps; a ring later counts',
-      (tester) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    try {
-      final (state, fakes) =
-          await demoState(onboardingDone: false, emptyLibrary: true);
-      await tester.pumpWidget(ReadAlarmApp(state: state));
-
-      await tapText(tester, 'Get started');
-      expect(find.text('Get your reading alarms'), findsOneWidget);
-      await tapText(tester, 'Allow notifications');
-      expect(find.text('Ring like an alarm clock'), findsOneWidget);
-      await tapText(tester, 'Allow alarms');
-      expect(fakes.permissions.requested, ['notifications', 'exactAlarm']);
-
-      // Straight to the book: no battery, auto-start or lock steps.
-      expect(find.text('Add your first book'), findsOneWidget);
-      expect(state.permissions['autoStart'], isTrue);
-      expect(state.permissions['recentsLock'], isTrue);
-      await tapText(tester, 'Choose a PDF or EPUB');
-      await tapText(tester, 'Choose EPUB');
-      await tapText(tester, 'Done');
-      await tapText(tester, 'Continue');
-
-      await tapText(tester, 'Start test');
-      await tapText(tester, 'Close ReadAlarm and test');
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pumpAndSettle();
-      expect(state.onboardingStep, 4);
-      // ReadAlarm opened 5 minutes after the alarm rang on time: passes,
-      // timed by the ring, not by the opening.
-      final started = state.alarmTestStartedAt!;
-      fakes.alarms.onLaunch!(AlarmLaunch(
-          fakes.alarms.once.single.$1, AlarmAction.open,
-          cold: true, rangAt: started.add(const Duration(seconds: 62))));
-      await tester.pumpAndSettle();
-      expect(find.text('Your alarms work'), findsOneWidget);
-      expect(find.text('Check auto-start and recent apps'), findsNothing);
-      await close(tester, state);
-    } finally {
-      debugDefaultTargetPlatformOverride = null;
-    }
-  });
-
-  testWidgets('a failed alarm test says so; setup resumes at the test',
-      (tester) async {
-    final (state, fakes) = await demoState(onboardingDone: false);
-    state.setOnboardingStep(7);
-    await tester.pumpWidget(ReadAlarmApp(state: state));
-    await tester.pumpAndSettle();
-    expect(find.text('Check your alarm works'), findsOneWidget);
-
-    await tapText(tester, 'Start test');
-    await tapText(tester, 'Close ReadAlarm and test');
-    await tester.pump(const Duration(seconds: 1));
-    // The alarm arrives while ReadAlarm is still open: no proof.
-    fakes.alarms
-        .onLaunch!(AlarmLaunch(fakes.alarms.once.last.$1, AlarmAction.open));
-    await tester.pumpAndSettle();
-    expect(find.text('Let\'s try that again'), findsOneWidget);
-
-    // No alarm at all: after the wait, it's a failure, with a way back to
-    // the settings and a way on.
-    await tapText(tester, 'Test again');
-    await tapText(tester, 'Close ReadAlarm and test');
-    await tester.pump(const Duration(seconds: 1));
-    state.alarmTestStartedAt =
-        DateTime.now().subtract(const Duration(minutes: 4));
-    await tester.pump(const Duration(seconds: 6));
-    expect(find.text('The alarm didn\'t open ReadAlarm'), findsOneWidget);
-    await tapText(tester, 'Check auto-start and recent apps');
-    expect(find.text('One more step for your phone'), findsOneWidget);
-    await close(tester, state);
-  });
-
-  testWidgets('adding an alarm needs the settings and a passed alarm test',
-      (tester) async {
-    final (state, fakes) = await demoState();
-    state.alarmTestPassedAt = null;
-    await tester.pumpWidget(ReadAlarmApp(state: state));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.bySemanticsLabel('Add alarm').first);
-    await tester.pumpAndSettle();
-    expect(find.text('Finish alarm setup first'), findsOneWidget);
-
-    await tapText(tester, 'Turn on auto-start');
-    await tapText(tester, 'I\'ve done this');
-    await tapText(tester, 'Lock in recent apps');
-    await tapText(tester, 'I\'ve locked it');
-    // Both tapped through, but not confirmed until the test passes.
-    expect(find.text('Finish alarm setup first'), findsOneWidget);
-    expect(state.alarmSetupDone, isFalse);
-
-    await tapText(tester, 'Run the alarm test');
-    await tapText(tester, 'Start test');
-    await tapText(tester, 'Close ReadAlarm and test');
-    await tester.pump(const Duration(seconds: 1));
-    fakes.alarms.onLaunch!(
-        AlarmLaunch(fakes.alarms.once.last.$1, AlarmAction.open, cold: true));
-    await tester.pumpAndSettle();
-    // After setup the test alarm also opens the reminder; close it.
-    Navigator.of(tester.element(find.text('Reading reminder'))).pop();
-    await tester.pumpAndSettle();
-    await tapText(tester, 'Continue');
-    expect(state.alarmSetupDone, isTrue);
-    expect(find.text('Finish alarm setup first'), findsNothing);
-    await close(tester, state);
-  });
-
-  testWidgets('"Not now" sets no alarm', (tester) async {
-    final (state, fakes) = await demoState();
-    state.alarmTestPassedAt = null;
-    await tester.pumpWidget(ReadAlarmApp(state: state));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(Switch).last); // the alarm that's off
-    await tester.pumpAndSettle();
-    expect(find.text('Finish alarm setup first'), findsOneWidget);
-    await tapText(tester, 'Not now');
-    expect(state.alarms.last.enabled, isFalse);
-    await close(tester, state);
-  });
-
-  testWidgets('Home warns until alarms are known to work', (tester) async {
-    final (state, fakes) = await demoState();
-    state.alarmTestPassedAt = null;
-    await tester.pumpWidget(ReadAlarmApp(state: state));
-    await tester.pumpAndSettle();
-    expect(find.text('Your alarm may not ring'), findsOneWidget);
-    expect(find.textContaining('hasn\'t passed'), findsOneWidget);
-
-    await tapText(tester, 'Fix');
-    expect(find.text('Check your alarm works'), findsOneWidget);
-    await tapText(tester, 'Start test');
-    await tapText(tester, 'Close ReadAlarm and test');
-    await tester.pump(const Duration(seconds: 1));
-    fakes.alarms.onLaunch!(
-        AlarmLaunch(fakes.alarms.once.last.$1, AlarmAction.open, cold: true));
-    await tester.pumpAndSettle();
-    // After setup, the test alarm also opens the reminder; close it.
-    expect(find.text('Reading reminder'), findsOneWidget);
-    Navigator.of(tester.element(find.text('Reading reminder'))).pop();
-    await tester.pumpAndSettle();
-    expect(find.text('Your alarms work'), findsOneWidget);
-    await tapText(tester, 'Continue');
-    expect(find.text('Your alarm may not ring'), findsNothing);
     await close(tester, state);
   });
 
@@ -587,10 +412,8 @@ void main() {
     await close(tester, state);
   });
 
-  testWidgets('settings: voice preview and the alarm test', (tester) async {
+  testWidgets('settings: voice preview and test alarm', (tester) async {
     final (state, fakes) = await demoState(premium: true);
-    state.alarmTestPassedAt = null;
-    await state.refreshPermissions();
     await tester.pumpWidget(ReadAlarmApp(state: state));
     await tapText(tester, 'Settings');
 
@@ -598,16 +421,8 @@ void main() {
     expect(fakes.speech.spoken.single, contains('ReadAlarm'));
     await tester.pump(const Duration(seconds: 3));
 
-    // Alarm health lists the alarm test, with Fix until it passes.
-    await tester.scrollUntilVisible(find.text('Alarm test'), 200,
-        scrollable: find.byType(Scrollable).first);
-    final fix = find.descendant(
-        of: find.ancestor(
-            of: find.text('Alarm test'), matching: find.byType(ListTile)),
-        matching: find.text('Fix'));
-    await tester.tap(fix);
-    await tester.pumpAndSettle();
-    expect(find.text('Check your alarm works'), findsOneWidget);
+    await tapText(tester, 'Run 1-minute test alarm');
+    expect(fakes.alarms.once, hasLength(1));
     await close(tester, state);
   });
 
@@ -733,52 +548,6 @@ void main() {
     await tapText(tester, 'Continue reading');
     expect(find.text('You\'ve used today\'s 15 free minutes'), findsOneWidget);
     expect(state.reader.active, isFalse);
-    await close(tester, state);
-  });
-
-  testWidgets('auto-start from Settings is confirmed only by the alarm test',
-      (tester) async {
-    final (state, fakes) = await demoState();
-    state
-      ..autoStartConfirmed = false
-      ..alarmTestPassedAt = null;
-    await state.refreshPermissions();
-    await tester.pumpWidget(ReadAlarmApp(state: state));
-    await tapText(tester, 'Settings');
-    expect(find.text('Needs attention'), findsOneWidget);
-
-    // Scroll past it so its row isn't under the bottom bar.
-    await tester.scrollUntilVisible(find.text('Send a problem report'), 200,
-        scrollable: find.byType(Scrollable).first);
-    await tester.tap(find.descendant(
-        of: find.ancestor(
-            of: find.text('Auto-start'), matching: find.byType(ListTile)),
-        matching: find.text('Fix')));
-    await tester.pumpAndSettle();
-    // Long press copies the phone's details for support.
-    final copied = <String>[];
-    tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-      if (call.method == 'Clipboard.setData') {
-        copied.add((call.arguments as Map)['text'] as String);
-      }
-      return null;
-    });
-    await tester.scrollUntilVisible(find.text('Open auto-start settings'), 200,
-        scrollable: find.byType(Scrollable).last);
-    await tester.longPress(find.text('Open auto-start settings'));
-    await tester.pumpAndSettle();
-    expect(copied.single, contains('TECNO'));
-    await tester.pump(const Duration(seconds: 5)); // Let the message go.
-    await tester.pumpAndSettle();
-
-    await tapText(tester, 'I\'ve done this');
-    // The step is recorded, but it isn't confirmed until the test passes.
-    expect(state.autoStartConfirmed, isTrue);
-    expect(state.permissions['autoStart'], isFalse);
-    await tester.pump();
-    final saved = await fakes.storage.loadState();
-    expect(saved!['autoStartConfirmed'], isTrue);
     await close(tester, state);
   });
 

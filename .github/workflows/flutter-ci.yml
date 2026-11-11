@@ -11,16 +11,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  server:
-    name: Push server tests (PHP)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Syntax
-        run: for f in server/lib/*.php server/public/api/*.php server/cron/*.php; do php -l "$f"; done
-      - name: Tests
-        run: php server/tests/run.php
-
   test:
     name: Analyze & test
     runs-on: ubuntu-latest
@@ -79,26 +69,6 @@ jobs:
           [ -n "$INTERSTITIAL" ] && args="$args --dart-define=ADMOB_INTERSTITIAL_ID=$INTERSTITIAL"
           echo "AD_ARGS=$args" >> "$GITHUB_ENV"
 
-      # Backup push (docs/alarm-reliability.md): off unless these secrets
-      # are set. Gradle reads ORG_GRADLE_PROJECT_* as -P properties.
-      - name: Backup push settings
-        env:
-          PUSH_SERVER_URL: ${{ secrets.PUSH_SERVER_URL }}
-          PUSH_API_KEY: ${{ secrets.PUSH_API_KEY }}
-          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
-          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          FIREBASE_SENDER_ID: ${{ secrets.FIREBASE_SENDER_ID }}
-        run: |
-          {
-            echo "ORG_GRADLE_PROJECT_pushServerUrl=$PUSH_SERVER_URL"
-            echo "ORG_GRADLE_PROJECT_pushApiKey=$PUSH_API_KEY"
-            echo "ORG_GRADLE_PROJECT_firebaseAppId=$FIREBASE_APP_ID"
-            echo "ORG_GRADLE_PROJECT_firebaseApiKey=$FIREBASE_API_KEY"
-            echo "ORG_GRADLE_PROJECT_firebaseProjectId=$FIREBASE_PROJECT_ID"
-            echo "ORG_GRADLE_PROJECT_firebaseSenderId=$FIREBASE_SENDER_ID"
-          } >> "$GITHUB_ENV"
-
       - name: Build release APKs (one per ABI)
         env:
           ORG_GRADLE_PROJECT_admobAppId: ${{ secrets.ADMOB_APP_ID }}
@@ -134,60 +104,6 @@ jobs:
         with:
           name: readalarm-apks-${{ github.sha }}
           path: build/app/outputs/flutter-apk/*.apk
-          retention-days: 30
-
-  # The iOS app, unsigned (no Apple developer account set up yet):
-  # - readalarm-ios-unsigned.ipa: for an iPhone, once re-signed (Xcode,
-  #   or a sideloading tool such as Sideloadly with an Apple ID).
-  # - readalarm-ios-simulator.zip: runs in Xcode's iOS Simulator on a Mac.
-  build-ios:
-    name: Build iOS app
-    needs: test
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      # Google's test ads unless the repository has the real iOS AdMob ids.
-      - name: AdMob ids
-        env:
-          APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
-          BANNER: ${{ secrets.ADMOB_IOS_BANNER_ID }}
-          INTERSTITIAL: ${{ secrets.ADMOB_IOS_INTERSTITIAL_ID }}
-        run: |
-          [ -n "$APP_ID" ] && /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier $APP_ID" ios/Runner/Info.plist
-          args=""
-          [ -n "$BANNER" ] && args="$args --dart-define=ADMOB_IOS_BANNER_ID=$BANNER"
-          [ -n "$INTERSTITIAL" ] && args="$args --dart-define=ADMOB_IOS_INTERSTITIAL_ID=$INTERSTITIAL"
-          echo "AD_ARGS=$args" >> "$GITHUB_ENV"
-
-      - name: Build for iPhone (unsigned)
-        run: |
-          flutter build ios --release --no-codesign $AD_ARGS
-          # The iOS 26 system alarms must be in the app, not compiled out.
-          otool -L build/ios/iphoneos/Runner.app/Runner | grep AlarmKit
-          ls build/ios/iphoneos/Runner.app/Metadata.appintents
-          mkdir -p ios-out/Payload
-          cp -R build/ios/iphoneos/Runner.app ios-out/Payload/
-          (cd ios-out && zip -qry readalarm-ios-unsigned.ipa Payload && rm -rf Payload)
-
-      - name: Build for the iOS Simulator
-        run: |
-          flutter build ios --simulator --debug $AD_ARGS
-          (cd build/ios/iphonesimulator && zip -qry "$GITHUB_WORKSPACE/ios-out/readalarm-ios-simulator.zip" Runner.app)
-
-      - name: Upload iOS app
-        uses: actions/upload-artifact@v4
-        with:
-          name: readalarm-ios-${{ github.sha }}
-          path: ios-out/*
           retention-days: 30
 
   # Opens the release APK on an Android emulator: fresh (onboarding), and

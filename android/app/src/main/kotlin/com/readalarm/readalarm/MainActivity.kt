@@ -2,132 +2,24 @@ package com.readalarm.readalarm
 
 import android.content.ComponentName
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private var alarms: MethodChannel? = null
-
-    /** An alarm that opened the app, until Dart takes it. */
-    private var pendingLaunch: Map<String, Any?>? = null
-
-    /** Whether ReadAlarm's screen is on view (between onStart and onStop). */
-    private var visible = false
-
-    /** Counts onStop, to tell whether another app's screen opened. */
-    private var stops = 0
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        // A new screen: ReadAlarm wasn't on view when the alarm rang.
-        pendingLaunch = launchFrom(intent, cold = true)
-        AlarmKeeper.update(this)
-    }
-
-    override fun onStart() {
-        super.onStart()
-        visible = true
-    }
-
-    override fun onStop() {
-        visible = false
-        stops++
-        super.onStop()
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        // "cold": ReadAlarm was closed or in the background, not on view.
-        // (Restoring it from recent apps also arrives here.)
-        val cold = !visible
-        super.onNewIntent(intent)
-        setIntent(intent)
-        val launch = launchFrom(intent, cold = cold) ?: return
-        val channel = alarms
-        if (channel == null) pendingLaunch = launch else channel.invokeMethod("launch", launch)
-    }
-
-    /** The alarm [intent] is about, ringing it if it's the alarm going off. */
-    private fun launchFrom(intent: Intent?, cold: Boolean): Map<String, Any?>? {
-        val id = intent?.getIntExtra(AlarmEngine.EXTRA_ID, -1) ?: -1
-        if (id < 0) return null
-        AlarmEngine.log(this, "Screen opened for alarm $id (${intent?.action?.substringAfterLast('.')})")
-        val (payload, action) = when (intent?.action) {
-            AlarmEngine.ACTION_RING -> AlarmEngine.ring(this, id, AlarmEngine.Source.SCREEN) to "open"
-            AlarmEngine.ACTION_OPEN -> AlarmEngine.rungPayload(this, id) to "open"
-            AlarmEngine.ACTION_START -> {
-                AlarmEngine.dismiss(this, listOf(id))
-                AlarmEngine.rungPayload(this, id) to "start"
-            }
-            else -> null to null
-        }
-        // Handled once: a later recreation of the screen mustn't ring again.
-        intent?.removeExtra(AlarmEngine.EXTRA_ID)
-        if (payload == null) return null
-        return mapOf("payload" to payload, "action" to action, "cold" to cold)
-    }
-
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        alarms = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "readalarm/alarms").also {
-            it.setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "set" -> {
-                        for (m in call.argument<List<Map<*, *>>>("entries") ?: emptyList()) {
-                            AlarmEngine.set(this, AlarmEngine.Entry.fromMap(m))
-                        }
-                        result.success(null)
-                    }
-                    "cancel" -> {
-                        for (id in call.argument<List<Int>>("ids") ?: emptyList()) AlarmEngine.cancel(this, id)
-                        result.success(null)
-                    }
-                    "dismiss" -> {
-                        AlarmEngine.dismiss(this, call.argument<List<Int>>("ids") ?: emptyList())
-                        result.success(null)
-                    }
-                    "pending" -> result.success(AlarmEngine.stored(this).map { e -> e.payload })
-                    "registered" -> {
-                        val ids = call.argument<List<Int>>("ids") ?: emptyList()
-                        result.success(ids.map { id -> AlarmEngine.isRegistered(this, id) })
-                    }
-                    "takeLaunch" -> {
-                        result.success(pendingLaunch)
-                        pendingLaunch = null
-                    }
-                    // Closes the app completely, as the phone might, so the
-                    // alarm test checks an alarm can open it from closed.
-                    // The card stays in recent apps, keeping its lock.
-                    "closeApp" -> {
-                        AlarmEngine.log(this, "Alarm test: closing the app")
-                        result.success(null)
-                        moveTaskToBack(true)
-                        android.os.Handler(mainLooper).postDelayed(
-                            { android.os.Process.killProcess(android.os.Process.myPid()) },
-                            500,
-                        )
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "readalarm/autostart")
             .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "open" -> openAutoStart { result.success(it) }
-                    "report" -> result.success(report())
-                    else -> result.notImplemented()
-                }
+                if (call.method == "open") result.success(openAutoStart()) else result.notImplemented()
             }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "readalarm/diagnostics")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "phone" -> result.success(Diagnostics.phone(this) + "\n\nAUTO-START\n" + report())
+                    "phone" -> result.success(Diagnostics.phone(this))
                     "registered" -> {
                         val ids = call.argument<List<Int>>("ids") ?: emptyList()
-                        result.success(ids.map { AlarmEngine.isRegistered(this, it) })
+                        result.success(ids.map { Diagnostics.isRegistered(this, it) })
                     }
                     "logcat" -> Thread {
                         val text = Diagnostics.logcat(call.argument<Int>("lines") ?: 400)
@@ -155,94 +47,18 @@ class MainActivity : FlutterActivity() {
 
     /**
      * Opens the phone maker's auto-start screen, which isn't in Android's own
-     * app settings. Answers "autostart" if that screen opened, "manager" if
+     * app settings. Returns "autostart" if that screen opened, "manager" if
      * only the maker's phone-manager app did, or null if neither exists.
-     *
-     * Some phones accept the request but show nothing (Tecno's Phone Master
-     * closes its auto-start screen at once when another app opens it), so
-     * each try counts only if ReadAlarm's screen really went behind another.
      */
-    private fun openAutoStart(done: (String?) -> Unit) {
-        val tries = mutableListOf<Pair<Intent, String>>()
+    private fun openAutoStart(): String? {
         for ((pkg, cls) in AUTO_START_SCREENS) {
-            tries += Intent().setComponent(ComponentName(pkg, cls)) to "autostart"
-        }
-        // The screen's name changes between versions (Tecno's Phone Master
-        // especially), so look through the apps' screens for one.
-        for (pkg in PHONE_MANAGERS + SETTINGS_APPS) {
-            for (cls in autoStartScreensIn(pkg)) {
-                tries += Intent().setComponent(ComponentName(pkg, cls)) to "autostart"
-            }
+            if (start(Intent().setComponent(ComponentName(pkg, cls)))) return "autostart"
         }
         for (pkg in PHONE_MANAGERS) {
             val launch = packageManager.getLaunchIntentForPackage(pkg) ?: continue
-            tries += launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) to "manager"
+            if (start(launch)) return "manager"
         }
-        val seen = mutableSetOf<String>()
-        val unique = tries.filter { seen.add(it.first.component?.flattenToString() ?: it.first.toUri(0)) }
-        tryNext(unique, 0, done)
-    }
-
-    private fun tryNext(tries: List<Pair<Intent, String>>, i: Int, done: (String?) -> Unit) {
-        if (i >= tries.size) {
-            AlarmEngine.log(this, "Auto-start: no screen opened")
-            return done(null)
-        }
-        val (intent, kind) = tries[i]
-        val before = stops
-        if (!start(intent)) return tryNext(tries, i + 1, done)
-        android.os.Handler(mainLooper).postDelayed({
-            val name = intent.component?.flattenToShortString() ?: intent.`package`
-            if (stops > before || !hasWindowFocus()) {
-                AlarmEngine.log(this, "Auto-start: opened $name")
-                done(kind)
-            } else {
-                AlarmEngine.log(this, "Auto-start: $name showed nothing")
-                tryNext(tries, i + 1, done)
-            }
-        }, 1_500L)
-    }
-
-    /** Screens of [pkg] other apps may open whose names suggest auto-start. */
-    private fun autoStartScreensIn(pkg: String): List<String> = try {
-        @Suppress("DEPRECATION")
-        val activities = packageManager
-            .getPackageInfo(pkg, PackageManager.GET_ACTIVITIES).activities ?: emptyArray()
-        activities
-            .filter { it.exported && it.permission == null && AUTO_START_NAME.containsMatchIn(it.name) }
-            // Lists of apps first, then the rest.
-            .sortedBy { if (Regex("(?i)list|manage|mgr").containsMatchIn(it.name)) 0 else 1 }
-            .map { it.name }
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    /** What this phone has, for support: managers and auto-start screens. */
-    private fun report(): String {
-        val lines = mutableListOf(
-            "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE}",
-        )
-        for (pkg in PHONE_MANAGERS + SETTINGS_APPS) {
-            val installed = try {
-                packageManager.getPackageInfo(pkg, 0)
-                true
-            } catch (e: Exception) {
-                false
-            }
-            if (!installed) continue
-            val launchable = packageManager.getLaunchIntentForPackage(pkg) != null
-            lines += "$pkg (icon: $launchable)"
-            for (cls in autoStartScreensIn(pkg)) lines += "  $cls"
-        }
-        for ((pkg, cls) in AUTO_START_SCREENS) {
-            val found = try {
-                packageManager.getActivityInfo(ComponentName(pkg, cls), 0).exported
-            } catch (e: Exception) {
-                null
-            }
-            if (found != null) lines += "known: $pkg/$cls exported=$found"
-        }
-        return lines.joinToString("\n")
+        return null
     }
 
     private fun start(intent: Intent): Boolean = try {
@@ -272,15 +88,8 @@ class MainActivity : FlutterActivity() {
             "com.huawei.systemmanager" to "com.huawei.systemmanager.optimize.process.ProtectActivity",
         )
 
-        private val AUTO_START_NAME = Regex("(?i)auto.?start|autoboot|auto.?launch|startup|bootstart")
-
-        /** Some phones put auto-start in their Settings app. */
-        private val SETTINGS_APPS = listOf("com.android.settings", "com.transsion.settings")
-
         private val PHONE_MANAGERS = listOf(
             "com.transsion.phonemaster",
-            "com.transsion.phonemanager",
-            "com.itel.autobootmanager",
             "com.miui.securitycenter",
             "com.coloros.safecenter",
             "com.huawei.systemmanager",

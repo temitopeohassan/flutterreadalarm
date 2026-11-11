@@ -5,8 +5,6 @@ import '../theme/app_colors.dart';
 import '../widgets/ad_banner_slot.dart';
 import '../widgets/book_cover.dart';
 import '../widgets/navy_header.dart';
-import 'onboarding/alarm_test_screen.dart';
-import '../widgets/alarm_setup_gate.dart';
 import 'paywall_screen.dart';
 import 'reading_reminder_screen.dart';
 import 'set_alarm_screen.dart';
@@ -20,7 +18,6 @@ class HomeScreen extends StatelessWidget {
   static Future<void> openEditor(BuildContext context,
       {ReadingAlarm? existing, BookInfo? book}) async {
     final state = AppScope.of(context);
-    if (!await ensureAlarmSetup(context) || !context.mounted) return;
     if (existing == null && !state.canAddAlarm) {
       await PaywallScreen.open(context);
       return;
@@ -64,8 +61,6 @@ class HomeScreen extends StatelessWidget {
             ),
             trailing: _AddButton(onTap: () => openEditor(context)),
           ),
-          if (state.alarms.any((a) => a.enabled) && !state.alarmsVerified)
-            _AlarmWarning(dropped: state.alarmsDroppedAt != null),
           Expanded(
             child: alarms.isEmpty
                 ? _EmptyState(onAdd: () => openEditor(context))
@@ -107,13 +102,9 @@ class HomeScreen extends StatelessWidget {
                               onToggle: (v) async {
                                 final result =
                                     await state.toggleAlarm(alarm, v);
-                                if (!context.mounted) return;
-                                if (result == AlarmSaveStatus.limitReached) {
+                                if (result == AlarmSaveStatus.limitReached &&
+                                    context.mounted) {
                                   await PaywallScreen.open(context);
-                                } else if (result ==
-                                        AlarmSaveStatus.setupNeeded &&
-                                    await ensureAlarmSetup(context)) {
-                                  await state.toggleAlarm(alarm, v);
                                 }
                               },
                             ),
@@ -143,58 +134,6 @@ String _freeAlarmNote(int count) {
   if (count <= limit) return '$count of $limit free $noun used';
   // Left from an earlier version or Premium: the extras stay off.
   return 'The free plan includes $limit $noun. Upgrade to switch on more.';
-}
-
-/// Shown while alarms aren't known to work on this phone: the alarm test
-/// hasn't passed, or the phone has removed an alarm since.
-class _AlarmWarning extends StatelessWidget {
-  const _AlarmWarning({required this.dropped});
-  final bool dropped;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: const Color(0xFFFDECEA),
-      child: InkWell(
-        onTap: () => AlarmTestScreen.open(context),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-          child: Row(
-            children: [
-              const Icon(Icons.warning_amber_rounded, color: Color(0xFFC0392B)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Your alarm may not ring',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF8E2A20)),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      dropped
-                          ? 'Your phone removed ReadAlarm\'s alarm while it was '
-                              'closed. Run the alarm test to fix it.'
-                          : 'The alarm test hasn\'t passed on this phone yet.',
-                      style: const TextStyle(
-                          fontSize: 13, color: Color(0xFF8E2A20)),
-                    ),
-                  ],
-                ),
-              ),
-              TextButton(
-                onPressed: () => AlarmTestScreen.open(context),
-                child: const Text('Fix'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _AddButton extends StatelessWidget {

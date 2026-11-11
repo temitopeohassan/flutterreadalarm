@@ -70,81 +70,8 @@ class AppState extends ChangeNotifier {
   String _freeReadDay = '';
   Duration _freeReadToday = Duration.zero;
 
-  /// The user went through the phone-brand auto-start guide (not proof:
-  /// see [alarmSetupDone]).
+  /// The user confirmed following the phone-brand auto-start guide.
   bool autoStartConfirmed = false;
-
-  /// The user went through the recent-apps lock step (not proof: see
-  /// [alarmSetupDone]).
-  bool recentsLockConfirmed = false;
-
-  /// Version of setup. Users who finished an older one go through it again
-  /// (2: auto-start, the recent-apps lock and the alarm test).
-  static const onboardingVersion = 2;
-
-  /// Alarms can be set only once the alarm test has passed (and the phone
-  /// hasn't removed an alarm since): that's what confirms auto-start and
-  /// the recent-apps lock. Tapping through those steps doesn't.
-  bool get alarmSetupDone => alarmsVerified;
-
-  /// Onboarding page to resume at (the alarm test closes the app).
-  int onboardingStep = 0;
-
-  /// When an alarm last opened ReadAlarm from closed (the alarm test).
-  DateTime? alarmTestPassedAt;
-
-  /// When the alarm test was last started.
-  DateTime? alarmTestStartedAt;
-
-  /// The last test alarm arrived with ReadAlarm still open, so it proved
-  /// nothing about a closed app.
-  bool alarmTestRanWhileOpen = false;
-
-  /// When the test alarm last opened ReadAlarm from closed, but too late
-  /// to count: the phone held it back.
-  DateTime? alarmTestLateAt;
-
-  /// How late the test alarm may ring and still pass.
-  static const alarmTestLateLimit = Duration(minutes: 2);
-
-  /// How late the last late test alarm rang.
-  Duration? get alarmTestDelay {
-    final started = alarmTestStartedAt;
-    final late = alarmTestLateAt;
-    if (started == null || late == null) return null;
-    return late.difference(started.add(const Duration(minutes: 1)));
-  }
-
-  /// When the phone was last found to have removed ReadAlarm's alarms.
-  DateTime? alarmsDroppedAt;
-
-  /// How long the alarm test waits for its alarm before calling it failed.
-  static const alarmTestWait = Duration(minutes: 3);
-
-  /// Alarms are known to work on this phone: the alarm test passed, and
-  /// the phone hasn't removed an alarm since.
-  bool get alarmsVerified {
-    final passed = alarmTestPassedAt;
-    final dropped = alarmsDroppedAt;
-    return passed != null && (dropped == null || dropped.isBefore(passed));
-  }
-
-  AlarmTestStatus get alarmTestStatus {
-    final started = alarmTestStartedAt;
-    final passed = alarmTestPassedAt;
-    if (started == null) {
-      return passed == null ? AlarmTestStatus.notRun : AlarmTestStatus.passed;
-    }
-    if (passed != null && !passed.isBefore(started)) {
-      return AlarmTestStatus.passed;
-    }
-    final late = alarmTestLateAt;
-    if (late != null && !late.isBefore(started)) return AlarmTestStatus.late;
-    if (alarmTestRanWhileOpen) return AlarmTestStatus.ranWhileOpen;
-    return clock.now().difference(started) < alarmTestWait
-        ? AlarmTestStatus.waiting
-        : AlarmTestStatus.failed;
-  }
 
   final Map<String, bool> permissions = {
     for (final key in permissionKeys) key: false,
@@ -195,18 +122,10 @@ class AppState extends ChangeNotifier {
   Map<String, Object?> toJson() => {
         'version': 1,
         'onboardingDone': onboardingDone,
-        'onboardingVersion': onboardingDone ? onboardingVersion : 0,
         'isPremium': purchased,
         'freeReadDay': _freeReadDay,
         'freeReadSeconds': _freeReadToday.inSeconds,
         'autoStartConfirmed': autoStartConfirmed,
-        'recentsLockConfirmed': recentsLockConfirmed,
-        'onboardingStep': onboardingStep,
-        'alarmTestPassedAt': alarmTestPassedAt?.toIso8601String(),
-        'alarmTestStartedAt': alarmTestStartedAt?.toIso8601String(),
-        'alarmTestRanWhileOpen': alarmTestRanWhileOpen,
-        'alarmTestLateAt': alarmTestLateAt?.toIso8601String(),
-        'alarmsDroppedAt': alarmsDroppedAt?.toIso8601String(),
         'voice': voice?.toMap(),
         'speed': speed,
         'pitch': pitch,
@@ -217,24 +136,10 @@ class AppState extends ChangeNotifier {
 
   void _restore(Map<String, Object?> json) {
     onboardingDone = json['onboardingDone'] as bool? ?? false;
-    // Setup finished in an older version (without the alarm steps) is
-    // done again, from the start. Books, alarms and progress are kept.
-    final version =
-        json['onboardingVersion'] as int? ?? (onboardingDone ? 1 : 0);
-    final redoSetup = onboardingDone && version < onboardingVersion;
-    if (redoSetup) onboardingDone = false;
     purchased = json['isPremium'] as bool? ?? false;
     _freeReadDay = json['freeReadDay'] as String? ?? '';
     _freeReadToday = Duration(seconds: json['freeReadSeconds'] as int? ?? 0);
     autoStartConfirmed = json['autoStartConfirmed'] as bool? ?? false;
-    recentsLockConfirmed = json['recentsLockConfirmed'] as bool? ?? false;
-    onboardingStep = redoSetup ? 0 : json['onboardingStep'] as int? ?? 0;
-    DateTime? date(String key) => DateTime.tryParse(json[key] as String? ?? '');
-    alarmTestPassedAt = date('alarmTestPassedAt');
-    alarmTestStartedAt = date('alarmTestStartedAt');
-    alarmTestRanWhileOpen = json['alarmTestRanWhileOpen'] as bool? ?? false;
-    alarmTestLateAt = date('alarmTestLateAt');
-    alarmsDroppedAt = date('alarmsDroppedAt');
     voice = VoiceOption.fromMap(json['voice']);
     speed = (json['speed'] as num?)?.toDouble() ?? 1.0;
     pitch = (json['pitch'] as num?)?.toDouble() ?? 1.0;
@@ -287,7 +192,7 @@ class AppState extends ChangeNotifier {
     if (json == null || reader.active || _disposed) return;
     _restore(json);
     _texts.removeWhere((id, _) => _findBook(id) == null);
-    _ownChecks();
+    permissions['autoStart'] = autoStartConfirmed;
     notifyListeners();
     await _applyFreeAlarmLimit();
   }
@@ -359,27 +264,6 @@ class AppState extends ChangeNotifier {
   void completeOnboarding() {
     onboardingDone = true;
     _changed();
-  }
-
-  void setOnboardingStep(int step) {
-    if (onboardingStep == step) return;
-    onboardingStep = step;
-    _changed();
-  }
-
-  /// The alarm test: sets an alarm for one minute from now, then closes
-  /// ReadAlarm completely, as the phone might. It passes when that alarm
-  /// opens ReadAlarm from closed ([openAlarm]).
-  Future<void> startAlarmTest({bool closeApp = true}) async {
-    alarmTestStartedAt = clock.now();
-    alarmTestRanWhileOpen = false;
-    _ownChecks();
-    _changed();
-    await scheduleTestAlarm();
-    logEvent('Alarm test started${closeApp ? ': closing the app' : ''}');
-    // Let the save finish before the app closes.
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    if (closeApp) await services.alarms.closeApp();
   }
 
   /// Sets whether Premium was bought (from the store's answer).
@@ -464,7 +348,7 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('Permission check failed: $e');
     }
-    _ownChecks();
+    permissions['autoStart'] = autoStartConfirmed;
     final missing = [
       for (final e in permissions.entries)
         if (!e.value) e.key,
@@ -479,29 +363,10 @@ class AppState extends ChangeNotifier {
 
   String? _lastMissing;
 
-  /// The checks Android can't answer: the user's confirmations, and the
-  /// alarm test's result.
-  ///
-  /// Auto-start and the recent-apps lock count as confirmed only once the
-  /// alarm test passes: Android can't report them, and the user saying so
-  /// isn't proof.
-  void _ownChecks() {
-    final verified = alarmsVerified;
-    // iPhones have neither setting: alarms aren't stopped that way there.
-    permissions['autoStart'] = onIOS || verified;
-    permissions['recentsLock'] = onIOS || verified;
-    permissions['alarmTest'] = verified;
-  }
-
   Future<void> requestPermission(String key) async {
     if (key == 'autoStart') {
       autoStartConfirmed = true;
       _changed();
-    } else if (key == 'recentsLock') {
-      recentsLockConfirmed = true;
-      _changed();
-    } else if (key == 'alarmTest') {
-      // Not a permission: passed by running the alarm test.
     } else {
       try {
         await services.permissions.request(key);
@@ -612,9 +477,6 @@ class AppState extends ChangeNotifier {
   /// Saves an alarm from the editor, enforcing the free alarm limit, one
   /// alarm per moment, and one-off alarms being in the future.
   Future<AlarmSaveResult> saveAlarm(ReadingAlarm alarm) async {
-    if (alarm.enabled && !alarmSetupDone) {
-      return const AlarmSaveResult.setupNeeded();
-    }
     final isNew = !alarms.any((a) => a.id == alarm.id);
     if (isNew && !canAddAlarm) return const AlarmSaveResult.limitReached();
     final once = alarm.onceAt;
@@ -634,7 +496,6 @@ class AppState extends ChangeNotifier {
   /// Switches an alarm on or off. On the free tier only [freeAlarmLimit]
   /// alarms can be on; switching on another returns limitReached.
   Future<AlarmSaveStatus> toggleAlarm(ReadingAlarm alarm, bool enabled) async {
-    if (enabled && !alarmSetupDone) return AlarmSaveStatus.setupNeeded;
     if (enabled &&
         !isPremium &&
         alarms.where((a) => a.enabled && a.id != alarm.id).length >=
@@ -699,10 +560,6 @@ class AppState extends ChangeNotifier {
           for (final e in held.entries)
             if (!e.value) e.key,
         ];
-        if (missing.isNotEmpty) {
-          alarmsDroppedAt = clock.now();
-          _ownChecks();
-        }
         logEvent('Alarm ${alarm.id} before resetting: Android held '
             '${held.length - missing.length} of ${held.length} rings'
             '${missing.isEmpty ? '' : ' (missing ${missing.join(', ')})'}');
@@ -724,13 +581,14 @@ class AppState extends ChangeNotifier {
   /// Returns false if there's no book yet.
   Future<bool> scheduleTestAlarm() async {
     final book = lastReadBook;
+    if (book == null) return false;
     await services.alarms.scheduleOnce(
       AlarmPayload(
         alarmId: 'test',
-        bookId: book?.id ?? '',
+        bookId: book.id,
         durationMin: 1,
         title: 'Test alarm',
-        body: book == null ? 'ReadAlarm' : '${book.title} · Read 1 min',
+        body: '${book.title} · Read 1 min',
       ),
       DateTime.now().add(const Duration(minutes: 1)),
     );
@@ -741,38 +599,7 @@ class AppState extends ChangeNotifier {
   /// Handles a ringing alarm the user opened or acted on.
   void openAlarm(AlarmLaunch launch) {
     final p = launch.payload;
-    logEvent('Alarm ${p.alarmId} opened (${launch.action.name}'
-        '${launch.cold ? ', app was closed' : ''})');
-    if (p.alarmId == 'test') {
-      final started = alarmTestStartedAt;
-      final now = clock.now();
-      final lateBy = started == null
-          ? Duration.zero
-          : (launch.rangAt ?? now)
-              .difference(started.add(const Duration(minutes: 1)));
-      if (launch.cold && lateBy > alarmTestLateLimit) {
-        // Rang, but held back by the phone: alarms would ring late.
-        alarmTestLateAt = launch.rangAt ?? now;
-        alarmTestRanWhileOpen = false;
-        logEvent('Alarm test failed: the alarm rang ${lateBy.inMinutes} min '
-            'late (the phone held it back)');
-      } else if (launch.cold) {
-        alarmTestPassedAt = now;
-        alarmTestRanWhileOpen = false;
-        logEvent('Alarm test passed: the alarm opened ReadAlarm from closed '
-            '(${lateBy.inSeconds} s after its time)');
-      } else if (alarmTestStatus != AlarmTestStatus.passed) {
-        alarmTestRanWhileOpen = true;
-        logEvent('Alarm test inconclusive: ReadAlarm was still open');
-      }
-      _ownChecks();
-      _changed();
-      // During setup the test only checks the alarm: no reading.
-      if (!onboardingDone) {
-        unawaited(services.alarms.dismiss('test'));
-        return;
-      }
-    }
+    logEvent('Alarm ${p.alarmId} opened (${launch.action.name})');
     final book = _findBook(p.bookId);
     if (book == null) {
       logEvent('Alarm ${p.alarmId}: its book is no longer in the library');
@@ -922,9 +749,6 @@ class AlarmSaveResult {
   const AlarmSaveResult.inPast()
       : status = AlarmSaveStatus.inPast,
         clash = null;
-  const AlarmSaveResult.setupNeeded()
-      : status = AlarmSaveStatus.setupNeeded,
-        clash = null;
   const AlarmSaveResult.clash(ReadingAlarm this.clash)
       : status = AlarmSaveStatus.clash;
 
@@ -934,15 +758,7 @@ class AlarmSaveResult {
   final ReadingAlarm? clash;
 }
 
-enum AlarmSaveStatus {
-  saved,
-  limitReached,
-  inPast,
-  clash,
-
-  /// Auto-start or the recent-apps lock isn't done ([AppState.alarmSetupDone]).
-  setupNeeded,
-}
+enum AlarmSaveStatus { saved, limitReached, inPast, clash }
 
 /// A finished reading session, for the Session complete screen.
 class CompletedSession {
@@ -1299,6 +1115,3 @@ class AppScope extends InheritedNotifier<AppState> {
   static AppState of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<AppScope>()!.notifier!;
 }
-
-/// Result of the alarm test ([AppState.startAlarmTest]).
-enum AlarmTestStatus { notRun, waiting, passed, failed, ranWhileOpen, late }
