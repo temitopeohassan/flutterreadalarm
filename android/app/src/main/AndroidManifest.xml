@@ -64,6 +64,10 @@
             android:name="com.readalarm.readalarm.NOTIFICATION_ICON"
             android:resource="@drawable/ic_stat_readalarm" />
 
+        <!-- AdMob app id, from admobAppId in android/app/build.gradle.kts. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${admobAppId}" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
@@ -76,6 +80,20 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- Email apps, for sending diagnostics reports. -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+        <!-- Phone-manager apps with the auto-start setting (MainActivity). -->
+        <package android:name="com.transsion.phonemaster" />
+        <package android:name="com.itel.autobootmanager" />
+        <package android:name="com.miui.securitycenter" />
+        <package android:name="com.coloros.safecenter" />
+        <package android:name="com.oppo.safe" />
+        <package android:name="com.vivo.permissionmanager" />
+        <package android:name="com.iqoo.secure" />
+        <package android:name="com.huawei.systemmanager" />
         <!-- flutter_tts: find the installed text-to-speech engines. -->
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />

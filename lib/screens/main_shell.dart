@@ -7,6 +7,8 @@ import 'now_playing_screen.dart';
 import 'library_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
+import '../services/diagnostics.dart';
+import 'diagnostics_screen.dart';
 
 /// Bottom-tab shell: Home, Library, Stats, Settings.
 class MainShell extends StatefulWidget {
@@ -41,6 +43,7 @@ class _MainShellState extends State<MainShell> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (Diagnostics.enabled) const DiagnosticsBar(),
           const _MiniPlayer(),
           Container(
             decoration: const BoxDecoration(

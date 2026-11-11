@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../models/reading_alarm.dart';
@@ -10,22 +12,104 @@ import '../widgets/reminder_illustration.dart';
 /// Screen — Reading reminder, shown when an alarm rings (full-screen over the
 /// lock screen, or from the alarm notification). Never shows ads.
 /// Start reading begins an alarm session; Snooze rings again in 10 min.
-class ReadingReminderScreen extends StatelessWidget {
-  const ReadingReminderScreen({super.key, required this.alarm});
+/// For a ringing alarm, reading starts by itself after [autoStartAfter] if
+/// nobody taps anything.
+class ReadingReminderScreen extends StatefulWidget {
+  const ReadingReminderScreen({
+    super.key,
+    required this.alarm,
+    this.autoStartAfter,
+  });
 
   final ReadingAlarm alarm;
+
+  /// Wait before reading starts by itself; null (a preview) never does.
+  final Duration? autoStartAfter;
+
+  /// How long a ringing alarm waits for a tap before reading starts.
+  static const autoStartDelay = Duration(seconds: 30);
+
+  @override
+  State<ReadingReminderScreen> createState() => _ReadingReminderScreenState();
+}
+
+class _ReadingReminderScreenState extends State<ReadingReminderScreen> {
+  Timer? _timer;
+  int? _secondsLeft;
+  bool _acted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final wait = widget.autoStartAfter;
+    if (wait == null) return;
+    _secondsLeft = wait.inSeconds;
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      final left = (_secondsLeft ?? 0) - 1;
+      if (left <= 0) {
+        _start();
+      } else {
+        setState(() => _secondsLeft = left);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  /// Stops the countdown; returns false if the user already acted.
+  bool _act() {
+    _timer?.cancel();
+    if (_acted || !mounted) return false;
+    setState(() {
+      _acted = true;
+      _secondsLeft = null;
+    });
+    return true;
+  }
+
+  Future<void> _start() async {
+    if (!_act()) return;
+    final state = AppScope.of(context);
+    final alarm = widget.alarm;
+    await state.silenceAlarm(alarm);
+    if (!mounted) return;
+    await NowPlayingScreen.open(
+      context,
+      state.findBook(alarm.book.id) ?? alarm.book,
+      durationMin: alarm.durationMin,
+      replace: true,
+    );
+  }
+
+  Future<void> _snooze() async {
+    if (!_act()) return;
+    final state = AppScope.of(context);
+    final navigator = Navigator.of(context);
+    await state.snoozeAlarm(widget.alarm);
+    if (!mounted) return;
+    showSnack(context, 'Snoozed. Reading starts in 10 minutes.');
+    navigator.maybePop();
+  }
+
+  void _dismiss() {
+    if (!_act()) return;
+    AppScope.of(context).silenceAlarm(widget.alarm);
+    Navigator.of(context).maybePop();
+  }
 
   @override
   Widget build(BuildContext context) {
     final minutesThisWeek = AppScope.of(context).minutesThisWeek;
+    final secondsLeft = _secondsLeft;
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            _NotificationBar(onClose: () {
-              AppScope.of(context).silenceAlarm(alarm);
-              Navigator.of(context).maybePop();
-            }),
+            _NotificationBar(onClose: _dismiss),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
@@ -54,28 +138,22 @@ class ReadingReminderScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 24),
                     _AlarmCard(
-                      alarm: alarm,
-                      onStart: () async {
-                        final state = AppScope.of(context);
-                        await state.silenceAlarm(alarm);
-                        if (!context.mounted) return;
-                        await NowPlayingScreen.open(
-                          context,
-                          state.findBook(alarm.book.id) ?? alarm.book,
-                          durationMin: alarm.durationMin,
-                          replace: true,
-                        );
-                      },
-                      onSnooze: () async {
-                        final state = AppScope.of(context);
-                        final navigator = Navigator.of(context);
-                        await state.snoozeAlarm(alarm);
-                        if (!context.mounted) return;
-                        showSnack(
-                            context, 'Snoozed. Reading starts in 10 minutes.');
-                        navigator.maybePop();
-                      },
+                      alarm: widget.alarm,
+                      onStart: _start,
+                      onSnooze: _snooze,
                     ),
+                    if (secondsLeft != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Reading starts by itself in $secondsLeft s',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.navy,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     if (minutesThisWeek > 0)
                       _WeeklyNudge(minutes: minutesThisWeek),

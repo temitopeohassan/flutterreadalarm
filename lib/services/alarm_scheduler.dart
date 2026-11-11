@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -108,12 +109,30 @@ abstract class AlarmScheduler {
 
   /// Ids of alarms that still have a future ring scheduled.
   Future<Set<String>> pendingAlarmIds();
+
+  /// Whether Android itself holds each of [alarm]'s rings, by day label
+  /// ('Mon', 'Once'), or null if it can't be asked. The plugin's own list
+  /// survives the phone removing the app's alarms; this asks Android.
+  Future<Map<String, bool>?> heldByAndroid(ReadingAlarm alarm);
 }
 
 // Notification ids: each alarm gets a block of 10.
 // Slots 0–6 = weekly ring on Monday–Sunday, 7 = one-off, 8 = snooze/test.
 const _onceSlot = 7;
 const _snoozeSlot = 8;
+
+/// The notification ids [alarm] rings under, by label (e.g. 'Mon',
+/// 'Once', 'Snooze'), for diagnostics.
+Map<String, int> alarmNotificationIds(ReadingAlarm alarm) {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  final slots = alarm.repeatDays.isEmpty
+      ? {'Once': _onceSlot}
+      : {for (final d in alarm.repeatDays.toList()..sort()) days[d]: d};
+  return {
+    for (final e in slots.entries) e.key: _notificationId(alarm.id, e.value),
+    'Snooze': _notificationId(alarm.id, _snoozeSlot),
+  };
+}
 
 int _notificationId(String alarmId, int slot) {
   var hash = 0x811c9dc5; // FNV-1a
@@ -126,8 +145,27 @@ int _notificationId(String alarmId, int slot) {
 const _channelId = 'reading_alarms';
 const _actionStart = 'start';
 const _actionSnooze = 'snooze';
-const _initSettings = InitializationSettings(
-  android: AndroidInitializationSettings('ic_stat_readalarm'),
+const _iosCategory = 'readalarm_alarm';
+
+/// iPhone: the alarm's sound (in the app bundle, up to 30 seconds: iOS's
+/// limit for notification sounds).
+const _iosSound = 'readalarm_alarm.wav';
+
+final _initSettings = InitializationSettings(
+  android: const AndroidInitializationSettings('ic_stat_readalarm'),
+  // Permission is asked for in onboarding, not at start-up.
+  iOS: DarwinInitializationSettings(
+    requestAlertPermission: false,
+    requestBadgePermission: false,
+    requestSoundPermission: false,
+    notificationCategories: [
+      DarwinNotificationCategory(_iosCategory, actions: [
+        DarwinNotificationAction.plain(_actionStart, 'Start reading',
+            options: {DarwinNotificationActionOption.foreground}),
+        DarwinNotificationAction.plain(_actionSnooze, 'Snooze 10 min'),
+      ]),
+    ],
+  ),
 );
 
 NotificationDetails _alarmDetails() => NotificationDetails(
@@ -151,6 +189,15 @@ NotificationDetails _alarmDetails() => NotificationDetails(
               showsUserInterface: true),
           AndroidNotificationAction(_actionSnooze, 'Snooze 10 min'),
         ],
+      ),
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBanner: true,
+        presentList: true,
+        presentSound: true,
+        sound: _iosSound,
+        categoryIdentifier: _iosCategory,
+        interruptionLevel: InterruptionLevel.timeSensitive,
       ),
     );
 
@@ -352,6 +399,24 @@ class NotificationAlarmScheduler implements AlarmScheduler {
 
   @override
   Future<void> dismiss(String alarmId) => _silence(_plugin, alarmId);
+
+  static const _diagnostics = MethodChannel('readalarm/diagnostics');
+
+  @override
+  Future<Map<String, bool>?> heldByAndroid(ReadingAlarm alarm) async {
+    final ids = alarmNotificationIds(alarm)..remove('Snooze');
+    try {
+      final held = await _diagnostics.invokeMethod<List<Object?>>(
+          'registered', {'ids': ids.values.toList()});
+      if (held == null || held.length != ids.length) return null;
+      final labels = ids.keys.toList();
+      return {
+        for (var i = 0; i < labels.length; i++) labels[i]: held[i] == true,
+      };
+    } catch (e) {
+      return null;
+    }
+  }
 
   @override
   Future<Set<String>> pendingAlarmIds() async {

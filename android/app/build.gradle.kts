@@ -1,7 +1,17 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Play Store builds are signed with your upload key, described by
+// android/key.properties (never committed; see README). Without it the
+// release build is signed with the test key (see signingConfigs).
+val keyProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { stream -> load(stream) }
 }
 
 android {
@@ -30,13 +40,42 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // AdMob app id: Google's test app unless the real one is passed with
+        // -PadmobAppId=ca-app-pub-…~… (see README).
+        // (CI passes an empty value when the secret isn't set.)
+        manifestPlaceholders["admobAppId"] =
+            (project.findProperty("admobAppId") as String?)
+                ?.takeIf { it.isNotBlank() }
+                ?: "ca-app-pub-3940256099942544~3347511713"
+    }
+
+    signingConfigs {
+        // Test builds (CI's APKs) are all signed with this one key, so each
+        // new APK installs over the last. It is not secret and must never
+        // sign a Play Store build: those use the upload key below.
+        create("test") {
+            storeFile = file("test-signing.p12")
+            storeType = "PKCS12"
+            storePassword = "readalarm-test"
+            keyAlias = "test"
+            keyPassword = "readalarm-test"
+        }
+        if (keyProperties.isNotEmpty()) {
+            create("upload") {
+                storeFile = file(keyProperties.getProperty("storeFile"))
+                storePassword = keyProperties.getProperty("storePassword")
+                keyAlias = keyProperties.getProperty("keyAlias")
+                keyPassword = keyProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("upload")
+                ?: signingConfigs.getByName("test")
+            // Keeps code R8 can't see is used (see the file).
+            proguardFiles("proguard-rules.pro")
         }
     }
 }

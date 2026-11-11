@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/main.dart';
 import 'package:readalarm/models/reading_alarm.dart';
 import 'package:readalarm/screens/main_shell.dart';
 import 'package:readalarm/services/alarm_scheduler.dart';
+import 'package:readalarm/services/billing_service.dart';
+import 'package:readalarm/services/permission_service.dart';
 import 'package:readalarm/services/book_importer.dart';
 import 'package:readalarm/state/app_state.dart';
 
@@ -31,6 +34,27 @@ void main() {
     state.dispose();
   }
 
+  testWidgets('iPhone onboarding skips the Android-only steps', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      final (state, fakes) =
+          await demoState(onboardingDone: false, emptyLibrary: true);
+      await tester.pumpWidget(ReadAlarmApp(state: state));
+      await tapText(tester, 'Get started');
+      expect(find.text('Get your reading alarms'), findsOneWidget);
+      await tapText(tester, 'Allow notifications');
+      expect(fakes.permissions.requested, ['notifications']);
+      // Straight to the first book: no alarm, battery or auto-start steps.
+      expect(find.text('Add your first book'), findsOneWidget);
+      expect(state.permissions['autoStart'], isTrue);
+      await state.reader.finish('stop');
+      await tester.pumpWidget(const SizedBox());
+      state.dispose();
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   testWidgets('onboarding: permissions, first book, test alarm, paywall',
       (tester) async {
     final (state, fakes) =
@@ -45,9 +69,21 @@ void main() {
     expect(fakes.permissions.requested, ['notifications', 'exactAlarm']);
     expect(state.permissions['battery'], isFalse);
 
-    // The phone's brand guide is preselected (fakes report a Tecno).
-    expect(find.text('Open Phone Master (or Settings → Battery).'),
-        findsOneWidget);
+    // The phone's brand guide is preselected (fakes report a Tecno), and
+    // the button opens the maker's auto-start page, not Android's app info.
+    expect(
+        find.textContaining('Phone Master\'s Auto-start list'), findsOneWidget);
+    await tapText(tester, 'Open auto-start settings');
+    expect(fakes.permissions.autoStartOpened, 1);
+    expect(find.byType(SnackBar), findsNothing);
+
+    // Only Phone Master's home screen found: say where to look.
+    fakes.permissions.autoStartPage = AutoStartPage.phoneManager;
+    await tapText(tester, 'Open auto-start settings');
+    expect(
+        find.textContaining('Look for Auto-start management'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5)); // Let the message go.
+    await tester.pumpAndSettle();
     await tapText(tester, 'I\'ve done this');
     expect(state.autoStartConfirmed, isTrue);
 
@@ -171,6 +207,56 @@ void main() {
     await close(tester, state);
   });
 
+  testWidgets('a ringing alarm starts reading by itself after 30 seconds',
+      (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+    final alarm = state.alarms.first;
+    fakes.alarms
+        .onLaunch!(AlarmLaunch(AlarmPayload.forAlarm(alarm), AlarmAction.open));
+    await tester.pumpAndSettle();
+    expect(find.text('Reading starts by itself in 30 s'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 10));
+    expect(find.text('Reading starts by itself in 20 s'), findsOneWidget);
+    expect(state.reader.active, isFalse);
+
+    await tester.pump(const Duration(seconds: 20));
+    await tester.pumpAndSettle();
+    expect(state.reader.active, isTrue);
+    expect(fakes.alarms.dismissed, [alarm.id], reason: 'the ringing stops');
+    expect(find.text('Alarm session'), findsOneWidget);
+    await close(tester, state);
+  });
+
+  testWidgets('snoozing stops the countdown; a preview has none',
+      (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+
+    // The preview from Home never starts by itself.
+    await tester.tap(find.byTooltip('Preview alarm screen'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('starts by itself'), findsNothing);
+    await tester.pump(const Duration(seconds: 40));
+    expect(state.reader.active, isFalse);
+    await tester.tap(find.byTooltip('Dismiss'));
+    await tester.pumpAndSettle();
+
+    final alarm = state.alarms.first;
+    fakes.alarms
+        .onLaunch!(AlarmLaunch(AlarmPayload.forAlarm(alarm), AlarmAction.open));
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Snooze 10 min');
+    await tester.pump(const Duration(seconds: 40));
+    await tester.pumpAndSettle();
+    expect(state.reader.active, isFalse);
+    expect(fakes.alarms.once, hasLength(1), reason: 'snoozed');
+    await close(tester, state);
+  });
+
   testWidgets('snoozing a ringing alarm rings again in 10 minutes',
       (tester) async {
     final (state, fakes) = await demoState();
@@ -233,7 +319,7 @@ void main() {
     await close(tester, state);
   });
 
-  testWidgets('Premium can\'t be bought or switched on yet', (tester) async {
+  testWidgets('without Google Play, Premium can\'t be bought', (tester) async {
     final (state, _) = await demoState();
     await tester.pumpWidget(ReadAlarmApp(state: state));
     await tester.pumpAndSettle();
@@ -241,7 +327,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tapText(tester, 'Continue');
-    expect(find.textContaining('isn\'t available yet'), findsOneWidget);
+    expect(find.textContaining('Purchases aren\'t available'), findsOneWidget);
     expect(state.isPremium, isFalse);
     await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
@@ -251,6 +337,86 @@ void main() {
     await tapText(tester, 'Settings');
     expect(find.text('Test mode: Premium'), findsNothing);
     expect(find.byType(SwitchListTile), findsNothing);
+    await close(tester, state);
+  });
+
+  testWidgets('buying Premium on Google Play unlocks it', (tester) async {
+    final (state, fakes) = await demoState();
+    fakes.billing.available = true;
+    await state.loadPrices();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Go ad-free').first);
+    await tester.pumpAndSettle();
+
+    // Google Play's prices.
+    expect(find.text('₦12,000.00 / year'), findsOneWidget);
+    expect(find.text('₦1,500.00 / month'), findsOneWidget);
+
+    await tester.tap(find.text('Monthly'));
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Continue');
+    expect(fakes.billing.bought, [PremiumPlans.monthly]);
+    expect(state.isPremium, isTrue);
+    // The paywall closes and Premium is welcomed.
+    expect(find.text('ReadAlarm Premium'), findsNothing);
+    expect(find.text('Welcome to Premium!'), findsOneWidget);
+    expect(find.text('Go ad-free'), findsNothing, reason: 'no banner');
+    await close(tester, state);
+  });
+
+  testWidgets('a pending payment says so and doesn\'t unlock Premium',
+      (tester) async {
+    final (state, fakes) = await demoState();
+    fakes.billing
+      ..available = true
+      ..nextPurchase = BillingEventKind.pending;
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Go ad-free').first);
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Continue');
+    expect(state.isPremium, isFalse);
+    expect(find.textContaining('Payment pending'), findsOneWidget);
+    await close(tester, state);
+  });
+
+  testWidgets('Restore purchases finds an active subscription', (tester) async {
+    final (state, fakes) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tapText(tester, 'Settings');
+
+    // Not reachable.
+    await tapText(tester, 'Restore purchases');
+    expect(find.textContaining('Couldn\'t reach Google Play'), findsOneWidget);
+
+    fakes.billing.available = true;
+    await tapText(tester, 'Restore purchases');
+    expect(find.textContaining('No active subscription'), findsOneWidget);
+
+    fakes.billing.owned.add(PremiumPlans.yearly);
+    await tapText(tester, 'Restore purchases');
+    expect(find.text('Premium restored.'), findsOneWidget);
+    expect(state.isPremium, isTrue);
+    await close(tester, state);
+  });
+
+  testWidgets('60-minute sessions open the paywall on the free plan',
+      (tester) async {
+    final (state, _) = await demoState();
+    await tester.pumpWidget(ReadAlarmApp(state: state));
+    await tester.pumpAndSettle();
+    await tapText(tester, 'Read 30 min');
+
+    // Drag the duration slider to its last stop, 60 minutes.
+    final slider = find.byType(Slider);
+    await tester.drag(slider, const Offset(400, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('ReadAlarm Premium'), findsOneWidget);
+    expect(find.textContaining('Watch'), findsNothing, reason: 'no ad offer');
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('60 min'), findsNothing);
     await close(tester, state);
   });
 
@@ -390,7 +556,7 @@ void main() {
 
     // Billing isn't connected: buying doesn't unlock Premium.
     await tapText(tester, 'Continue');
-    expect(find.textContaining('isn\'t available yet'), findsOneWidget);
+    expect(find.textContaining('Purchases aren\'t available'), findsOneWidget);
     expect(state.isPremium, isFalse);
 
     // Closing it shows the session summary; reading again is refused.

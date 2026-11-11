@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/permission_service.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
@@ -33,10 +34,13 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
 
   static const _guides = <String, List<String>>{
     'Tecno / Infinix / itel': [
-      'Open Phone Master (or Settings → Battery).',
-      'Go to App launch / Auto-start management.',
-      'Find ReadAlarm and turn Auto-start on.',
-      'Set Background activity to Allow.',
+      'Tap Open auto-start settings below. It opens Phone Master\'s '
+          'Auto-start list (it isn\'t in Android\'s app settings).',
+      'Find ReadAlarm and turn it on.',
+      'If Phone Master opens on its home screen, look for Auto-start '
+          'management (sometimes under Toolbox or App management).',
+      'Then in Settings → Apps → ReadAlarm → Battery, allow background '
+          'activity.',
     ],
     'Xiaomi / Redmi / Poco': [
       'Open Settings → Apps → Manage apps → ReadAlarm.',
@@ -58,6 +62,27 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
       'Choose Unrestricted.',
     ],
   };
+
+  /// Opens the phone maker's auto-start page, with a hint if only a nearby
+  /// page could be opened.
+  Future<void> _openAutoStart(AppState state) async {
+    final page = await state.services.permissions.openAutoStartSettings();
+    if (!mounted) return;
+    switch (page) {
+      case AutoStartPage.autoStart:
+        break;
+      case AutoStartPage.phoneManager:
+        showSnack(
+            context,
+            'Look for Auto-start management (sometimes under Toolbox or App '
+            'management) and turn ReadAlarm on.');
+      case AutoStartPage.appInfo:
+        showSnack(
+            context,
+            'No separate auto-start page was found on this phone. Open '
+            'Battery and allow ReadAlarm to run in the background.');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -152,9 +177,9 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
         Align(
           alignment: Alignment.centerRight,
           child: TextButton.icon(
-            onPressed: state.services.permissions.openAppSettings,
+            onPressed: () => _openAutoStart(state),
             icon: const Icon(Icons.open_in_new_rounded, size: 18),
-            label: const Text('Open app settings'),
+            label: const Text('Open auto-start settings'),
             style: TextButton.styleFrom(foregroundColor: AppColors.orange),
           ),
         ),

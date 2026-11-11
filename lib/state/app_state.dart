@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 
 import '../models/reading_alarm.dart';
 import '../services/alarm_scheduler.dart';
+import '../services/billing_service.dart';
+import '../services/event_log.dart';
 import '../services/book_importer.dart';
 import '../services/book_text.dart';
 import '../services/permission_service.dart';
@@ -15,8 +17,8 @@ import '../services/speech.dart';
 
 /// App state, persisted through [AppServices.storage] after every change.
 ///
-/// Billing (RevenueCat) and ads are simulated: [setPremium] and
-/// [unlockRewarded] stand in for real purchases and rewarded ads.
+/// Premium is bought through Google Play Billing ([buyPremium]); the
+/// last known state is saved so the app works offline.
 class AppState extends ChangeNotifier {
   AppState({
     required this.services,
@@ -38,8 +40,15 @@ class AppState extends ChangeNotifier {
 
   bool onboardingDone = false;
 
-  /// Premium bought (simulated: billing isn't connected yet).
+  /// Premium bought: an active Google Play subscription, as last checked.
   bool purchased = false;
+
+  /// Google Play's prices by product id; empty until loaded (or if the
+  /// store isn't available).
+  Map<String, String> storePrices = const {};
+
+  /// A message about a purchase for the UI to show, e.g. a pending payment.
+  final billingNotice = ValueNotifier<String?>(null);
 
   /// Premium features are on (bought; simulated until billing is wired).
   bool get isPremium => purchased;
@@ -53,9 +62,6 @@ class AppState extends ChangeNotifier {
   List<VoiceOption> voices = const [];
   double speed = 1.0;
   double pitch = 1.0;
-
-  /// Rewarded-ad unlock of the 60-min duration (ADS-4).
-  DateTime? rewardedUnlockUntil;
 
   /// Free reading allowance per day, reset at local midnight.
   static const freeDailyReading = Duration(minutes: 15);
@@ -86,11 +92,18 @@ class AppState extends ChangeNotifier {
     await services.speech.init();
     await services.playback.init(state.reader.onCommand);
     await services.alarms.init(state.openAlarm);
+    await services.billing.init(state._onBilling);
+    unawaited(state.refreshPurchases());
+    unawaited(state.loadPrices());
     await state.refreshPermissions();
     unawaited(state.loadVoices());
     await state._applyFreeAlarmLimit();
     await state._syncAlarms();
     final launch = await services.alarms.takeLaunch();
+    logEvent('App started${launch == null ? '' : ' by alarm '
+            '${launch.payload.alarmId} (${launch.action.name})'}. '
+        '${state.alarms.where((a) => a.enabled).length} alarm(s) on, '
+        'Premium: ${state.isPremium}');
     if (launch != null) state.openAlarm(launch);
     return state;
   }
@@ -100,6 +113,7 @@ class AppState extends ChangeNotifier {
     _disposed = true;
     reader.dispose();
     pendingAlarm.dispose();
+    billingNotice.dispose();
     super.dispose();
   }
 
@@ -109,7 +123,6 @@ class AppState extends ChangeNotifier {
         'version': 1,
         'onboardingDone': onboardingDone,
         'isPremium': purchased,
-        'rewardedUnlockUntil': rewardedUnlockUntil?.toIso8601String(),
         'freeReadDay': _freeReadDay,
         'freeReadSeconds': _freeReadToday.inSeconds,
         'autoStartConfirmed': autoStartConfirmed,
@@ -124,8 +137,6 @@ class AppState extends ChangeNotifier {
   void _restore(Map<String, Object?> json) {
     onboardingDone = json['onboardingDone'] as bool? ?? false;
     purchased = json['isPremium'] as bool? ?? false;
-    rewardedUnlockUntil =
-        DateTime.tryParse(json['rewardedUnlockUntil'] as String? ?? '');
     _freeReadDay = json['freeReadDay'] as String? ?? '';
     _freeReadToday = Duration(seconds: json['freeReadSeconds'] as int? ?? 0);
     autoStartConfirmed = json['autoStartConfirmed'] as bool? ?? false;
@@ -181,7 +192,8 @@ class AppState extends ChangeNotifier {
     if (json == null || reader.active || _disposed) return;
     _restore(json);
     _texts.removeWhere((id, _) => _findBook(id) == null);
-    permissions['autoStart'] = autoStartConfirmed;
+    // iPhones have no auto-start setting.
+    permissions['autoStart'] = onIOS || autoStartConfirmed;
     notifyListeners();
     await _applyFreeAlarmLimit();
   }
@@ -191,10 +203,8 @@ class AppState extends ChangeNotifier {
   bool get canAddBook => isPremium || books.length < freeBookLimit;
   bool get canAddAlarm => isPremium || alarms.length < freeAlarmLimit;
 
-  bool get has60MinAccess =>
-      isPremium ||
-      (rewardedUnlockUntil != null &&
-          rewardedUnlockUntil!.isAfter(DateTime.now()));
+  /// 60-minute sessions are Premium only.
+  bool get has60MinAccess => isPremium;
 
   bool get allPermissionsGranted => permissions.values.every((v) => v);
 
@@ -257,10 +267,55 @@ class AppState extends ChangeNotifier {
     _changed();
   }
 
-  /// Simulated purchase (billing is not wired up yet).
+  /// Sets whether Premium was bought (from the store's answer).
   void setPremium(bool value) {
+    if (purchased == value) return;
     purchased = value;
     _changed();
+    if (!value) unawaited(_applyFreeAlarmLimit());
+  }
+
+  Future<void> loadPrices() async {
+    try {
+      final prices = await services.billing.prices();
+      if (_disposed || prices.isEmpty) return;
+      storePrices = prices;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Loading prices failed: $e');
+    }
+  }
+
+  /// Asks Google Play which subscriptions are active. Returns null if it
+  /// couldn't be reached (Premium then stays as last known).
+  Future<bool?> refreshPurchases() async {
+    final owned = await services.billing.ownedPremium();
+    if (owned == null || _disposed) return null;
+    setPremium(owned.isNotEmpty);
+    return owned.isNotEmpty;
+  }
+
+  /// Opens Google Play's purchase sheet for a Premium plan.
+  Future<BuyResult> buyPremium(String productId) =>
+      services.billing.buy(productId);
+
+  void _onBilling(BillingEvent event) {
+    if (_disposed) return;
+    logEvent('Purchase ${event.kind.name} ${event.productId ?? ''} '
+        '${event.message ?? ''}');
+    switch (event.kind) {
+      case BillingEventKind.purchased:
+        if (!purchased) billingNotice.value = 'Welcome to Premium!';
+        setPremium(true);
+      case BillingEventKind.pending:
+        billingNotice.value = 'Payment pending. Premium starts as soon as '
+            'Google Play confirms it.';
+      case BillingEventKind.failed:
+        billingNotice.value = 'The purchase didn\'t go through. '
+            '${event.message ?? 'Please try again.'}';
+      case BillingEventKind.cancelled:
+        break;
+    }
   }
 
   /// Alarms that may ring on the free tier: without Premium (e.g. alarms
@@ -294,9 +349,21 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('Permission check failed: $e');
     }
-    permissions['autoStart'] = autoStartConfirmed;
+    // iPhones have no auto-start setting.
+    permissions['autoStart'] = onIOS || autoStartConfirmed;
+    final missing = [
+      for (final e in permissions.entries)
+        if (!e.value) e.key,
+    ];
+    if (missing.join() != _lastMissing) {
+      _lastMissing = missing.join();
+      logEvent('Permissions: ${missing.isEmpty ? 'all OK' : 'missing '
+          '${missing.join(', ')}'}');
+    }
     if (!_disposed) notifyListeners();
   }
+
+  String? _lastMissing;
 
   Future<void> requestPermission(String key) async {
     if (key == 'autoStart') {
@@ -463,6 +530,7 @@ class AppState extends ChangeNotifier {
     try {
       await services.alarms.schedule(alarm);
     } catch (e) {
+      logEvent('ERROR scheduling alarm ${alarm.id}: $e');
       debugPrint('Scheduling alarm failed: $e');
     }
   }
@@ -480,10 +548,27 @@ class AppState extends ChangeNotifier {
       if (!a.enabled || a.repeatDays.isNotEmpty) continue;
       final once = a.onceAt;
       final rang = once != null ? !once.isAfter(now) : !pending.contains(a.id);
-      if (rang) alarms[i] = a.copyWith(enabled: false);
+      if (rang) {
+        alarms[i] = a.copyWith(enabled: false);
+        logEvent('One-off alarm ${a.id} has passed: switched off');
+      }
     }
     for (final alarm in alarms.where((a) => a.enabled)) {
+      // Before setting it again: did Android still hold it? If not, the
+      // phone removed it while the app was away.
+      final held = await services.alarms.heldByAndroid(alarm);
+      if (held != null) {
+        final missing = [
+          for (final e in held.entries)
+            if (!e.value) e.key,
+        ];
+        logEvent('Alarm ${alarm.id} before resetting: Android held '
+            '${held.length - missing.length} of ${held.length} rings'
+            '${missing.isEmpty ? '' : ' (missing ${missing.join(', ')})'}');
+      }
       await _schedule(alarm);
+      logEvent('Alarm ${alarm.id} set: ${formatTime(alarm.time)} '
+          '${alarm.scheduleLabel}, next ${alarm.nextOccurrence(now)}');
     }
     _changed();
   }
@@ -509,14 +594,19 @@ class AppState extends ChangeNotifier {
       ),
       DateTime.now().add(const Duration(minutes: 1)),
     );
+    logEvent('Test alarm set for 1 minute from now');
     return true;
   }
 
   /// Handles a ringing alarm the user opened or acted on.
   void openAlarm(AlarmLaunch launch) {
     final p = launch.payload;
+    logEvent('Alarm ${p.alarmId} opened (${launch.action.name})');
     final book = _findBook(p.bookId);
-    if (book == null) return;
+    if (book == null) {
+      logEvent('Alarm ${p.alarmId}: its book is no longer in the library');
+      return;
+    }
     final known = alarms.where((a) => a.id == p.alarmId).firstOrNull;
     final alarm = known ??
         ReadingAlarm(
@@ -538,9 +628,11 @@ class AppState extends ChangeNotifier {
   /// Stops a ringing alarm's sound and notification, keeping its future
   /// rings.
   Future<void> silenceAlarm(ReadingAlarm alarm) async {
+    logEvent('Alarm ${alarm.id} silenced');
     try {
       await services.alarms.dismiss(alarm.id);
     } catch (e) {
+      logEvent('ERROR silencing alarm ${alarm.id}: $e');
       debugPrint('Dismissing alarm failed: $e');
     }
     // Make sure a weekly alarm still rings next time.
@@ -551,6 +643,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> snoozeAlarm(ReadingAlarm alarm) async {
+    logEvent('Alarm ${alarm.id} snoozed');
     await silenceAlarm(alarm);
     await services.alarms.scheduleOnce(
       AlarmPayload.forAlarm(alarm),
@@ -563,12 +656,6 @@ class AppState extends ChangeNotifier {
   void addSession(ReadingSession s) {
     sessions.insert(0, s);
     if (sessions.length > maxStoredSessions) sessions.removeLast();
-    _changed();
-  }
-
-  /// Simulated rewarded ad (ads are not wired up yet).
-  void unlockRewarded() {
-    rewardedUnlockUntil = DateTime.now().add(const Duration(hours: 24));
     _changed();
   }
 
@@ -766,7 +853,10 @@ class ReadingController extends ChangeNotifier {
   /// [book]: an alarm can carry an older copy of the book (for example
   /// when it reaches an instance of the app that was in the background).
   Future<ReadingStart> start(BookInfo book, {int? durationMin}) async {
-    if (_state.dailyLimitReached) return ReadingStart.dailyLimit;
+    if (_state.dailyLimitReached) {
+      logEvent('Reading refused: today\'s free minutes are used up');
+      return ReadingStart.dailyLimit;
+    }
     if (!active) {
       await _state.reloadFromStorage();
       book = _state.findBook(book.id) ?? book;
@@ -779,6 +869,7 @@ class ReadingController extends ChangeNotifier {
     if (active) await finish('stop');
     final loaded = await _state.textFor(book.id);
     if (loaded == null || loaded.sentences.isEmpty) {
+      logEvent('Reading refused: no text for "${book.title}"');
       return ReadingStart.missingText;
     }
 
@@ -791,10 +882,16 @@ class ReadingController extends ChangeNotifier {
     lastCompleted = null;
     _startedAt = clock.now();
     _progressBefore = book.isFinished ? 0 : book.progress;
+    _beatMinute = 0;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     resume();
+    logEvent('Reading started: "${book.title}" at sentence $index of '
+        '${loaded.sentences.length}, ${durationMin ?? 'no'} min limit');
     return ReadingStart.started;
   }
+
+  /// Last minute logged by [_tick]'s heartbeat.
+  int _beatMinute = 0;
 
   void _tick() {
     if (!active || _ending) return;
@@ -809,6 +906,14 @@ class ReadingController extends ChangeNotifier {
       return;
     }
     if (clock.now().second == 0) _updateNotification();
+    // A heartbeat in the diagnostics log: if these stop while reading,
+    // the phone paused the app.
+    final minute = elapsed.inMinutes;
+    if (minute > _beatMinute) {
+      _beatMinute = minute;
+      logEvent('Still reading: sentence $index, $minute min, '
+          '${playing ? 'playing' : 'paused'}');
+    }
     _notify();
   }
 
@@ -902,6 +1007,7 @@ class ReadingController extends ChangeNotifier {
   }
 
   void _onSpeechError(int generation) {
+    logEvent('ERROR text-to-speech reported an error at sentence $index');
     if (generation == _generation) pause();
   }
 
@@ -966,6 +1072,8 @@ class ReadingController extends ChangeNotifier {
 
     final read = _banked;
     final minutes = math.max(1, (read.inSeconds / 60).ceil());
+    logEvent('Reading ended ($reason) after ${read.inSeconds}s at sentence '
+        '$index');
     final book = _state.findBook(id);
     if (book != null && read > Duration.zero) {
       _state.addSession(ReadingSession(

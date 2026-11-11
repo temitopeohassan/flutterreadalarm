@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:readalarm/models/reading_alarm.dart';
 import 'package:readalarm/services/alarm_scheduler.dart';
+import 'package:readalarm/services/billing_service.dart';
+import 'package:readalarm/services/event_log.dart';
 import 'package:readalarm/services/book_importer.dart';
 import 'package:readalarm/state/app_state.dart';
 
@@ -27,14 +29,6 @@ void main() {
       state.setPremium(true);
       expect(state.canAddBook, isTrue);
       expect(state.canAddAlarm, isTrue);
-      expect(state.has60MinAccess, isTrue);
-      state.dispose();
-    });
-
-    test('rewarded unlock grants 60-minute access', () async {
-      final (state, _) = await demoState();
-      expect(state.has60MinAccess, isFalse);
-      state.unlockRewarded();
       expect(state.has60MinAccess, isTrue);
       state.dispose();
     });
@@ -426,6 +420,17 @@ void main() {
       restored.dispose();
     });
 
+    test('the log records rings Android lost before they are reset', () async {
+      final (state, fakes) = await demoState();
+      fakes.alarms.held['a1'] = {'Mon': true, 'Wed': false, 'Fri': false};
+      await state.resyncAlarms();
+      expect(
+          EventLog.instance.lines
+              .lastWhere((l) => l.contains('before resetting')),
+          contains('Android held 1 of 3 rings (missing Wed, Fri)'));
+      state.dispose();
+    });
+
     test('are scheduled again on resync', () async {
       final (state, fakes) = await demoState();
       fakes.alarms.dropAll();
@@ -449,6 +454,49 @@ void main() {
       await state.resyncAlarms();
       expect(state.alarms.firstWhere((a) => a.id == 'gone').enabled, isFalse);
       expect(fakes.alarms.scheduled.containsKey('gone'), isFalse);
+      state.dispose();
+    });
+  });
+
+  group('Google Play subscription', () {
+    test('is checked at start-up; a lapsed one ends Premium', () async {
+      final (state, fakes) = await demoState(premium: true);
+      await state.toggleAlarm(state.alarms.last, true);
+      await pumpEventQueue();
+      state.dispose();
+
+      // Offline: Premium stays as last known.
+      var restored = await AppState.load(fakes.services);
+      await pumpEventQueue();
+      expect(restored.isPremium, isTrue);
+      restored.dispose();
+
+      // Play says the subscription ended: back to the free tier, with one
+      // alarm on.
+      fakes.billing.available = true;
+      restored = await AppState.load(fakes.services);
+      await pumpEventQueue();
+      expect(restored.isPremium, isFalse);
+      expect([for (final a in restored.alarms) a.enabled], [true, false]);
+      restored.dispose();
+
+      // An active subscription is picked up too.
+      fakes.billing.owned.add(PremiumPlans.yearly);
+      restored = await AppState.load(fakes.services);
+      await pumpEventQueue();
+      expect(restored.isPremium, isTrue);
+      restored.dispose();
+    });
+
+    test('a failed purchase is reported and changes nothing', () async {
+      final (state, fakes) = await demoState();
+      fakes.billing
+        ..available = true
+        ..nextPurchase = BillingEventKind.failed;
+      expect(await state.buyPremium(PremiumPlans.yearly), BuyResult.started);
+      await pumpEventQueue();
+      expect(state.isPremium, isFalse);
+      expect(state.billingNotice.value, contains('didn\'t go through'));
       state.dispose();
     });
   });

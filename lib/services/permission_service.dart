@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -16,11 +17,46 @@ abstract class PermissionService {
   Future<void> request(String key);
 
   Future<void> openAppSettings();
+
+  /// Opens the phone maker's auto-start setting, or the closest page found.
+  Future<AutoStartPage> openAutoStartSettings();
 }
+
+/// Which page [PermissionService.openAutoStartSettings] opened.
+enum AutoStartPage {
+  /// The maker's auto-start list (e.g. Phone Master's on Tecno).
+  autoStart,
+
+  /// The maker's phone-manager app, at its home screen.
+  phoneManager,
+
+  /// Android's app info page for ReadAlarm (no maker screen found).
+  appInfo,
+}
+
+/// Whether this is an iPhone (or iPad).
+bool get onIOS => defaultTargetPlatform == TargetPlatform.iOS;
+
+/// Android-only settings: they don't exist on iPhone, which reports them
+/// as granted and doesn't show them.
+const androidOnlyPermissionKeys = {'exactAlarm', 'battery', 'autoStart'};
+
+IOSFlutterLocalNotificationsPlugin? get _iosNotifications =>
+    FlutterLocalNotificationsPlugin().resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
 
 class AndroidPermissionService implements PermissionService {
   @override
   Future<Map<String, bool>> status() async {
+    if (onIOS) {
+      // The alarm rings as a notification on iPhone.
+      final options = await _iosNotifications?.checkPermissions();
+      return {
+        'notifications': options?.isEnabled ?? false,
+        'exactAlarm': true,
+        'battery': true,
+      };
+    }
     if (defaultTargetPlatform != TargetPlatform.android) {
       return {'notifications': true, 'exactAlarm': true, 'battery': true};
     }
@@ -33,6 +69,13 @@ class AndroidPermissionService implements PermissionService {
 
   @override
   Future<void> request(String key) async {
+    if (onIOS) {
+      if (key == 'notifications') {
+        await _iosNotifications?.requestPermissions(
+            alert: true, badge: true, sound: true);
+      }
+      return;
+    }
     switch (key) {
       case 'notifications':
         await Permission.notification.request();
@@ -52,6 +95,24 @@ class AndroidPermissionService implements PermissionService {
 
   @override
   Future<void> openAppSettings() => openAppSettingsPage();
+
+  static const _autoStart = MethodChannel('readalarm/autostart');
+
+  @override
+  Future<AutoStartPage> openAutoStartSettings() async {
+    try {
+      switch (await _autoStart.invokeMethod<String>('open')) {
+        case 'autostart':
+          return AutoStartPage.autoStart;
+        case 'manager':
+          return AutoStartPage.phoneManager;
+      }
+    } catch (e) {
+      debugPrint('Opening auto-start settings failed: $e');
+    }
+    await openAppSettingsPage();
+    return AutoStartPage.appInfo;
+  }
 }
 
 /// permission_handler's top-level function, renamed to avoid the clash with

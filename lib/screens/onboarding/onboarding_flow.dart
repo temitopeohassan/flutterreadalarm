@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/permission_service.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../paywall_screen.dart';
@@ -22,7 +23,10 @@ class OnboardingFlow extends StatefulWidget {
 class _OnboardingFlowState extends State<OnboardingFlow> {
   final _controller = PageController();
   int _page = 0;
-  static const _count = 6;
+
+  /// iPhones skip the Android-only steps (exact alarms, battery,
+  /// auto-start).
+  static int get _count => onIOS ? 3 : 6;
 
   void _next() {
     if (_page < _count - 1) {
@@ -106,9 +110,11 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 children: [
                   WelcomeScreen(onNext: _next),
                   NotificationsPermissionScreen(onNext: _next),
-                  ExactAlarmPermissionScreen(onNext: _next),
-                  BatteryOptimizationScreen(onNext: _next),
-                  OemAutostartScreen(onNext: _next),
+                  if (!onIOS) ...[
+                    ExactAlarmPermissionScreen(onNext: _next),
+                    BatteryOptimizationScreen(onNext: _next),
+                    OemAutostartScreen(onNext: _next),
+                  ],
                   FirstBookScreen(onFinish: _finish),
                 ],
               ),

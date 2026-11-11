@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import '../services/ads_service.dart';
 import '../services/speech.dart';
+import '../services/permission_service.dart';
 import '../state/app_state.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common.dart';
 import '../widgets/navy_header.dart';
 import 'onboarding/oem_autostart_screen.dart';
+import 'diagnostics_screen.dart';
 import 'paywall_screen.dart';
 
 /// Screen — Settings: Premium, voice, permission health, privacy, purchases
@@ -133,7 +135,8 @@ class SettingsScreen extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Column(
                     children: [
-                      for (final e in _permissionLabels.entries)
+                      for (final e in _permissionLabels.entries.where((e) =>
+                          !onIOS || !androidOnlyPermissionKeys.contains(e.key)))
                         ListTile(
                           leading: Icon(
                             state.permissions[e.key]!
@@ -180,17 +183,43 @@ class SettingsScreen extends StatelessWidget {
                         leading: const Icon(Icons.restore_rounded,
                             color: AppColors.navy),
                         title: const Text('Restore purchases'),
-                        // TODO: Purchases.restorePurchases()
-                        onTap: () =>
-                            showSnack(context, 'No previous purchases found.'),
+                        onTap: () async {
+                          final found = await state.refreshPurchases();
+                          if (!context.mounted) return;
+                          showSnack(
+                            context,
+                            switch (found) {
+                              true => 'Premium restored.',
+                              false =>
+                                'No active subscription on this Google account.',
+                              null =>
+                                'Couldn\'t reach Google Play. Please try again.',
+                            },
+                          );
+                        },
                       ),
+                      // Required where the law asks for ad consent (EEA, UK).
                       if (!state.isPremium)
-                        ListTile(
-                          leading: const Icon(Icons.privacy_tip_outlined,
-                              color: AppColors.navy),
-                          title: const Text('Ad privacy options'),
-                          onTap: AdsService.instance.showPrivacyOptions,
+                        FutureBuilder(
+                          future: AdsService.instance.privacyOptionsRequired(),
+                          builder: (context, required) => required.data == true
+                              ? ListTile(
+                                  leading: const Icon(
+                                      Icons.privacy_tip_outlined,
+                                      color: AppColors.navy),
+                                  title: const Text('Ad privacy options'),
+                                  onTap: AdsService.instance.showPrivacyOptions,
+                                )
+                              : const SizedBox.shrink(),
                         ),
+                      ListTile(
+                        leading: const Icon(Icons.bug_report_outlined,
+                            color: AppColors.navy),
+                        title: const Text('Send a problem report'),
+                        subtitle: const Text(
+                            'Alarm and phone details, to help fix problems'),
+                        onTap: () => DiagnosticsScreen.open(context),
+                      ),
                       ListTile(
                         leading: const Icon(Icons.info_outline_rounded,
                             color: AppColors.navy),
@@ -243,7 +272,7 @@ class _PremiumCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   isPremium
-                      ? 'No ads. Unlimited books and alarms.'
+                      ? 'No ads. Manage it in Google Play → Subscriptions.'
                       : 'Unlimited books, 60-min sessions, every voice.',
                   style:
                       const TextStyle(color: Color(0xFFC9CFE3), fontSize: 13),

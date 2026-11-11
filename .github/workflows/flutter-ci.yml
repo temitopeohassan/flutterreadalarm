@@ -57,11 +57,47 @@ jobs:
 
       # Release builds are signed with the debug key until a release
       # keystore is configured in android/app/build.gradle.kts.
+      # Google's test ads unless the repository has the real AdMob ids as
+      # Actions secrets (Settings → Secrets and variables → Actions).
+      - name: AdMob ids
+        env:
+          BANNER: ${{ secrets.ADMOB_BANNER_ID }}
+          INTERSTITIAL: ${{ secrets.ADMOB_INTERSTITIAL_ID }}
+        run: |
+          args=""
+          [ -n "$BANNER" ] && args="$args --dart-define=ADMOB_BANNER_ID=$BANNER"
+          [ -n "$INTERSTITIAL" ] && args="$args --dart-define=ADMOB_INTERSTITIAL_ID=$INTERSTITIAL"
+          echo "AD_ARGS=$args" >> "$GITHUB_ENV"
+
       - name: Build release APKs (one per ABI)
-        run: flutter build apk --release --split-per-abi
+        env:
+          ORG_GRADLE_PROJECT_admobAppId: ${{ secrets.ADMOB_APP_ID }}
+        run: flutter build apk --release --split-per-abi $AD_ARGS
+
+      # The same app with a "Generate Report" bar on every screen, for
+      # finding out why alarms don't ring on a particular phone.
+      - name: Build diagnostics APK
+        env:
+          ORG_GRADLE_PROJECT_admobAppId: ${{ secrets.ADMOB_APP_ID }}
+        run: |
+          flutter build apk --release $AD_ARGS --dart-define=READALARM_DIAGNOSTICS=true
+          mkdir -p diagnostics
+          cp build/app/outputs/flutter-apk/app-release.apk diagnostics/readalarm-diagnostics.apk
 
       - name: Build universal release APK
-        run: flutter build apk --release
+        env:
+          ORG_GRADLE_PROJECT_admobAppId: ${{ secrets.ADMOB_APP_ID }}
+        run: |
+          flutter build apk --release $AD_ARGS
+          cp diagnostics/readalarm-diagnostics.apk build/app/outputs/flutter-apk/
+
+      # Every test APK must carry the same signature, or Android refuses
+      # to install it over the last one ("App not installed").
+      - name: Show the signing certificate
+        run: |
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          "$apksigner" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | grep -i sha-256
+          "$apksigner" verify --print-certs build/app/outputs/flutter-apk/readalarm-diagnostics.apk | grep -i sha-256
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
@@ -69,6 +105,119 @@ jobs:
           name: readalarm-apks-${{ github.sha }}
           path: build/app/outputs/flutter-apk/*.apk
           retention-days: 30
+
+  # The iOS app, unsigned, for SideStore (which signs it with the tester's
+  # own Apple ID when installing):
+  # - readalarm-ios-unsigned.ipa: open it in SideStore on the iPhone.
+  # - readalarm-ios-simulator.zip: runs in Xcode's iOS Simulator on a Mac.
+  build-ios:
+    name: Build iOS app
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Google's test ads unless the repository has the real iOS AdMob ids.
+      - name: AdMob ids
+        env:
+          APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
+          BANNER: ${{ secrets.ADMOB_IOS_BANNER_ID }}
+          INTERSTITIAL: ${{ secrets.ADMOB_IOS_INTERSTITIAL_ID }}
+        run: |
+          [ -n "$APP_ID" ] && /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier $APP_ID" ios/Runner/Info.plist
+          args=""
+          [ -n "$BANNER" ] && args="$args --dart-define=ADMOB_IOS_BANNER_ID=$BANNER"
+          [ -n "$INTERSTITIAL" ] && args="$args --dart-define=ADMOB_IOS_INTERSTITIAL_ID=$INTERSTITIAL"
+          echo "AD_ARGS=$args" >> "$GITHUB_ENV"
+
+      - name: Build for iPhone (unsigned)
+        run: |
+          flutter build ios --release --no-codesign $AD_ARGS
+          # The alarm sound must be in the app.
+          ls build/ios/iphoneos/Runner.app/readalarm_alarm.wav
+          mkdir -p ios-out/Payload
+          cp -R build/ios/iphoneos/Runner.app ios-out/Payload/
+          (cd ios-out && zip -qry readalarm-ios-unsigned.ipa Payload && rm -rf Payload)
+
+      - name: Build for the iOS Simulator
+        run: |
+          flutter build ios --simulator --debug $AD_ARGS
+          (cd build/ios/iphonesimulator && zip -qry "$GITHUB_WORKSPACE/ios-out/readalarm-ios-simulator.zip" Runner.app)
+
+      - name: Upload iOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: readalarm-ios-${{ github.sha }}
+          path: ios-out/*
+          retention-days: 30
+
+  # Opens the release APK on an Android emulator: fresh (onboarding), and
+  # past onboarding, where ads and billing start. Fails with the crash log
+  # if the app closes.
+  launch-check:
+    name: Launch on emulator
+    needs: build-apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: readalarm-apks-${{ github.sha }}
+          path: apks
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build the past-onboarding APK
+        run: |
+          flutter pub get
+          flutter build apk --release --target-platform android-x64 \
+            --dart-define=READALARM_SKIP_ONBOARDING=true
+          cp build/app/outputs/flutter-apk/app-release.apk apks/past-onboarding.apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Launch on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            bash .github/scripts/launch_check.sh apks/app-release.apk fresh-install 30
+            bash .github/scripts/launch_check.sh apks/past-onboarding.apk past-onboarding 45
+            bash .github/scripts/launch_check.sh apks/readalarm-diagnostics.apk diagnostics 30
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: readalarm-launch-logs-${{ github.sha }}
+          path: logcat/
+          retention-days: 14
 
   screenshots:
     name: Regenerate screenshots
