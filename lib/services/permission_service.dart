@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'event_log.dart';
+
 /// Keys of the permissions the alarm needs, as shown in onboarding and in
 /// Settings → Alarm health. 'autoStart' has no Android API; the app tracks
 /// the user's confirmation itself.
@@ -26,6 +28,10 @@ abstract class PermissionService {
 enum AutoStartPage {
   /// The maker's auto-start list (e.g. Phone Master's on Tecno).
   autoStart,
+
+  /// The maker's battery screen with background limits (brands with no
+  /// auto-start list, such as Samsung).
+  battery,
 
   /// The maker's phone-manager app, at its home screen.
   phoneManager,
@@ -101,9 +107,15 @@ class AndroidPermissionService implements PermissionService {
   @override
   Future<AutoStartPage> openAutoStartSettings() async {
     try {
-      switch (await _autoStart.invokeMethod<String>('open')) {
+      // Answers once a screen has really shown, or none did.
+      final opened =
+          await _autoStart.invokeMapMethod<String, Object?>('open') ?? {};
+      logEvent('Auto-start settings: ${opened['log']}');
+      switch (opened['kind']) {
         case 'autostart':
           return AutoStartPage.autoStart;
+        case 'battery':
+          return AutoStartPage.battery;
         case 'manager':
           return AutoStartPage.phoneManager;
       }

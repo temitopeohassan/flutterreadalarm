@@ -21,7 +21,11 @@ class OemAutostartScreen extends StatefulWidget {
       return 'Xiaomi / Redmi / Poco';
     }
     if (m.contains('samsung')) return 'Samsung';
-    if (['oppo', 'realme', 'oneplus'].any(m.contains)) return 'Oppo / Realme';
+    if (['oppo', 'realme', 'oneplus'].any(m.contains)) {
+      return 'Oppo / Realme / OnePlus';
+    }
+    if (['vivo', 'iqoo'].any(m.contains)) return 'Vivo';
+    if (['huawei', 'honor'].any(m.contains)) return 'Huawei / Honor';
     return 'Other';
   }
 
@@ -31,6 +35,7 @@ class OemAutostartScreen extends StatefulWidget {
 
 class _OemAutostartScreenState extends State<OemAutostartScreen> {
   String? _brand;
+  bool _opening = false;
 
   static const _guides = <String, List<String>>{
     'Tecno / Infinix / itel': [
@@ -43,34 +48,71 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
           'activity.',
     ],
     'Xiaomi / Redmi / Poco': [
-      'Open Settings → Apps → Manage apps → ReadAlarm.',
-      'Turn Autostart on.',
-      'Battery saver → No restrictions.',
-      'In Recents, pull down on ReadAlarm to lock it.',
+      'Tap Open auto-start settings below. It opens the Autostart list.',
+      'Find ReadAlarm and turn it on.',
+      'If the list doesn\'t open: Settings → Apps → Manage apps → '
+          'ReadAlarm → turn Autostart on.',
+      'On the same page: Battery saver → No restrictions.',
     ],
     'Samsung': [
-      'Open Settings → Battery → Background usage limits.',
+      'Samsung has no auto-start list. Tap Open auto-start settings below: '
+          'it opens Battery.',
+      'Tap Background usage limits.',
       'Remove ReadAlarm from Sleeping and Deep sleeping apps.',
       'Add ReadAlarm to Never sleeping apps.',
     ],
-    'Oppo / Realme': [
-      'Open Settings → Battery → App battery management.',
-      'Find ReadAlarm and allow Auto launch and Run in background.',
+    'Oppo / Realme / OnePlus': [
+      'Tap Open auto-start settings below. It opens the Auto launch (or '
+          'Startup manager) list.',
+      'Find ReadAlarm and turn it on.',
+      'If the list doesn\'t open: Settings → Apps → Auto launch, or '
+          'Settings → Battery → App battery management → ReadAlarm → allow '
+          'Auto launch and background activity.',
+    ],
+    'Vivo': [
+      'Tap Open auto-start settings below. It opens the Autostart list in '
+          'iManager.',
+      'Find ReadAlarm and turn it on.',
+      'If the list doesn\'t open: Settings → Apps → Autostart (or '
+          'iManager → App manager → Autostart manager).',
+      'Then Settings → Battery → Background power consumption → ReadAlarm '
+          '→ allow.',
+    ],
+    'Huawei / Honor': [
+      'Tap Open auto-start settings below. It opens App launch.',
+      'Find ReadAlarm and switch off "Manage automatically".',
+      'In the box that appears, turn on Auto-launch, Secondary launch and '
+          'Run in background.',
+      'If it doesn\'t open: Settings → Battery → App launch.',
     ],
     'Other': [
-      'Open Settings → Apps → ReadAlarm → Battery.',
-      'Choose Unrestricted.',
+      'Tap Open auto-start settings below. If your phone has an auto-start '
+          'list, find ReadAlarm and turn it on.',
+      'Otherwise it opens ReadAlarm\'s app page: tap Battery and choose '
+          'Unrestricted.',
     ],
   };
 
   /// Opens the phone maker's auto-start page, with a hint if only a nearby
   /// page could be opened.
   Future<void> _openAutoStart(AppState state) async {
-    final page = await state.services.permissions.openAutoStartSettings();
+    // Finding a screen that really opens can take a few seconds.
+    setState(() => _opening = true);
+    final AutoStartPage page;
+    try {
+      page = await state.services.permissions.openAutoStartSettings();
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
     if (!mounted) return;
     switch (page) {
       case AutoStartPage.autoStart:
         break;
+      case AutoStartPage.battery:
+        showSnack(
+            context,
+            'Open Background usage limits and add ReadAlarm to Never '
+            'sleeping apps.');
       case AutoStartPage.phoneManager:
         showSnack(
             context,
@@ -177,9 +219,9 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
         Align(
           alignment: Alignment.centerRight,
           child: TextButton.icon(
-            onPressed: () => _openAutoStart(state),
+            onPressed: _opening ? null : () => _openAutoStart(state),
             icon: const Icon(Icons.open_in_new_rounded, size: 18),
-            label: const Text('Open auto-start settings'),
+            label: Text(_opening ? 'Opening…' : 'Open auto-start settings'),
             style: TextButton.styleFrom(foregroundColor: AppColors.orange),
           ),
         ),
