@@ -20,6 +20,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned: newer releases deprecate package:flutter/material.dart,
+          # which fails "flutter analyze". Raise it when the app migrates.
+          flutter-version: 3.47.9
           cache: true
 
       - name: Install dependencies
@@ -50,6 +53,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned: newer releases deprecate package:flutter/material.dart,
+          # which fails "flutter analyze". Raise it when the app migrates.
+          flutter-version: 3.47.9
           cache: true
 
       - name: Install dependencies
@@ -120,6 +126,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned: newer releases deprecate package:flutter/material.dart,
+          # which fails "flutter analyze". Raise it when the app migrates.
+          flutter-version: 3.47.9
           cache: true
 
       - name: Install dependencies
@@ -183,6 +192,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned: newer releases deprecate package:flutter/material.dart,
+          # which fails "flutter analyze". Raise it when the app migrates.
+          flutter-version: 3.47.9
           cache: true
 
       - name: Build the past-onboarding APK
@@ -229,6 +241,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned: newer releases deprecate package:flutter/material.dart,
+          # which fails "flutter analyze". Raise it when the app migrates.
+          flutter-version: 3.47.9
           cache: true
 
       - name: Install dependencies
