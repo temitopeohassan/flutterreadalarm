@@ -1,0 +1,5 @@
+# The API: the only part of the server on the web.
+<IfModule mod_authz_core.c>
+    Require all granted
+</IfModule>
+Options -Indexes

@@ -130,6 +130,14 @@ flutter test screenshot_test
 | --- | --- | --- | --- |
 | ![Welcome](screenshots/01_onboarding_welcome.png) | ![Home](screenshots/13_home.png) | ![Set alarm](screenshots/17_set_alarm.png) | ![Now playing](screenshots/19_now_playing.png) |
 
+## Push from readalarm.net
+
+Every alarm is also sent to ReadAlarm's server (`server/`, PHP + MySQL at
+readalarm.net) when it's created, changed or deleted, and all of them when
+the app starts. The server sends a Firebase push a minute after each
+alarm's time; if the phone hadn't rung the alarm, the app rings it then.
+Setup, endpoints and secrets: [server/README.md](server/README.md).
+
 ## iPhone (SideStore)
 
 CI's `readalarm-ios-unsigned.ipa` is unsigned: SideStore signs it with the

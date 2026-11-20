@@ -2,10 +2,12 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 
 import 'alarm_scheduler.dart';
+import 'backend_service.dart';
 import 'billing_service.dart';
 import 'book_importer.dart';
 import 'permission_service.dart';
 import 'playback_service.dart';
+import 'push_service.dart';
 import 'speech.dart';
 import 'storage.dart';
 
@@ -20,6 +22,8 @@ class AppServices {
     required this.importer,
     required this.billing,
     this.deviceBrand = '',
+    this.backend = const NoBackend(),
+    this.push = const NoPush(),
   });
 
   final AppStorage storage;
@@ -32,6 +36,11 @@ class AppServices {
 
   /// Phone manufacturer, lower case, e.g. 'samsung' ('' if unknown).
   final String deviceBrand;
+
+  /// ReadAlarm's server at readalarm.net, which gets every alarm and
+  /// sends a push when one is due; and the push itself.
+  final BackendService backend;
+  final PushService push;
 
   static Future<AppServices> device() async {
     var brand = '';
@@ -49,6 +58,8 @@ class AppServices {
       importer: DeviceBookImporter(),
       billing: PlayBillingService(),
       deviceBrand: brand.toLowerCase(),
+      backend: await HttpBackend.open(),
+      push: FirebasePushService(),
     );
   }
 }

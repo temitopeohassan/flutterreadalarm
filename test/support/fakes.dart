@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:readalarm/models/reading_alarm.dart';
 import 'package:readalarm/services/alarm_scheduler.dart';
+import 'package:readalarm/services/backend_service.dart';
 import 'package:readalarm/services/billing_service.dart';
 import 'package:readalarm/services/book_extractor.dart';
 import 'package:readalarm/services/book_importer.dart';
@@ -92,6 +93,30 @@ class FakeSpeech implements SpeechEngine {
   }
 }
 
+/// Records what would be sent to ReadAlarm's server.
+class FakeBackend implements BackendService {
+  final saved = <ReadingAlarm>[];
+  final deleted = <String>[];
+  final synced = <List<String>>[];
+  final tokens = <String?>[];
+
+  @override
+  Future<void> saveAlarm(ReadingAlarm alarm) async => saved.add(alarm);
+
+  @override
+  Future<void> deleteAlarm(String alarmId) async => deleted.add(alarmId);
+
+  @override
+  Future<void> syncAlarms(List<ReadingAlarm> alarms) async =>
+      synced.add([for (final a in alarms) a.id]);
+
+  @override
+  Future<void> setPushToken(String? token) async => tokens.add(token);
+
+  @override
+  String get status => 'fake';
+}
+
 class FakeAlarms implements AlarmScheduler {
   final scheduled = <String, ReadingAlarm>{};
   final once = <(AlarmPayload, DateTime)>[];
@@ -135,6 +160,18 @@ class FakeAlarms implements AlarmScheduler {
   @override
   Future<Map<String, bool>?> heldByAndroid(ReadingAlarm alarm) async =>
       held[alarm.id];
+
+  final handled = <String>[];
+  final pushed = <Map<String, dynamic>>[];
+
+  @override
+  Future<bool> ringFromPush(Map<String, dynamic> data) async {
+    pushed.add(data);
+    return true;
+  }
+
+  @override
+  Future<void> markHandled(String alarmId) async => handled.add(alarmId);
 
   @override
   Future<Set<String>> pendingAlarmIds() async =>
@@ -299,7 +336,10 @@ class FakeServices {
         importer: importer,
         billing: billing,
         deviceBrand: 'tecno',
+        backend: backend,
       );
+
+  final backend = FakeBackend();
 }
 
 const _demoLines = [
