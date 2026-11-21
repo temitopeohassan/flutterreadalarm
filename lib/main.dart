@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'models/reading_alarm.dart';
@@ -34,6 +35,10 @@ Future<void> main() async {
   AdsService.instance = MobileAdsService();
   final state = await AppState.load(await AppServices.device());
   if (_skipOnboarding && !state.onboardingDone) state.completeOnboarding();
+  // Pushes from ReadAlarm's server, which ring an alarm the phone held
+  // back. Not awaited: the app opens without waiting for the network.
+  unawaited(
+      state.services.push.start(state.services.backend, state.services.alarms));
   runApp(ReadAlarmApp(state: state));
 }
 

@@ -84,6 +84,13 @@ void main() {
         find.textContaining('Look for Auto-start management'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5)); // Let the message go.
     await tester.pumpAndSettle();
+
+    // A brand with no auto-start list (Samsung): its battery screen.
+    fakes.permissions.autoStartPage = AutoStartPage.battery;
+    await tapText(tester, 'Open auto-start settings');
+    expect(find.textContaining('Never sleeping apps'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
     await tapText(tester, 'I\'ve done this');
     expect(state.autoStartConfirmed, isTrue);
 

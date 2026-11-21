@@ -11,6 +11,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  server:
+    name: Push server tests (PHP)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax
+        run: find server -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Tests
+        run: php server/tests/run.php
+
   test:
     name: Analyze & test
     runs-on: ubuntu-latest
@@ -20,6 +30,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned: newer releases deprecate package:flutter/material.dart,
+          # which fails "flutter analyze". Raise it when the app migrates.
+          flutter-version: 3.47.9
           cache: true
 
       - name: Install dependencies
@@ -50,6 +63,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned: newer releases deprecate package:flutter/material.dart,
+          # which fails "flutter analyze". Raise it when the app migrates.
+          flutter-version: 3.47.9
           cache: true
 
       - name: Install dependencies
@@ -63,10 +79,23 @@ jobs:
         env:
           BANNER: ${{ secrets.ADMOB_BANNER_ID }}
           INTERSTITIAL: ${{ secrets.ADMOB_INTERSTITIAL_ID }}
+          READALARM_API_URL: ${{ secrets.READALARM_API_URL }}
+          READALARM_API_KEY: ${{ secrets.READALARM_API_KEY }}
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          FIREBASE_IOS_APP_ID: ${{ secrets.FIREBASE_IOS_APP_ID }}
+          FIREBASE_SENDER_ID: ${{ secrets.FIREBASE_SENDER_ID }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
         run: |
           args=""
           [ -n "$BANNER" ] && args="$args --dart-define=ADMOB_BANNER_ID=$BANNER"
           [ -n "$INTERSTITIAL" ] && args="$args --dart-define=ADMOB_INTERSTITIAL_ID=$INTERSTITIAL"
+          # Push from readalarm.net (server/README.md): off without these.
+          for name in READALARM_API_URL READALARM_API_KEY FIREBASE_API_KEY \
+              FIREBASE_APP_ID FIREBASE_IOS_APP_ID FIREBASE_SENDER_ID FIREBASE_PROJECT_ID; do
+            value="${!name}"
+            if [ -n "$value" ]; then args="$args --dart-define=$name=$value"; fi
+          done
           echo "AD_ARGS=$args" >> "$GITHUB_ENV"
 
       - name: Build release APKs (one per ABI)
@@ -120,6 +149,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned: newer releases deprecate package:flutter/material.dart,
+          # which fails "flutter analyze". Raise it when the app migrates.
+          flutter-version: 3.47.9
           cache: true
 
       - name: Install dependencies
@@ -131,11 +163,17 @@ jobs:
           APP_ID: ${{ secrets.ADMOB_IOS_APP_ID }}
           BANNER: ${{ secrets.ADMOB_IOS_BANNER_ID }}
           INTERSTITIAL: ${{ secrets.ADMOB_IOS_INTERSTITIAL_ID }}
+          READALARM_API_URL: ${{ secrets.READALARM_API_URL }}
+          READALARM_API_KEY: ${{ secrets.READALARM_API_KEY }}
         run: |
           [ -n "$APP_ID" ] && /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier $APP_ID" ios/Runner/Info.plist
           args=""
           [ -n "$BANNER" ] && args="$args --dart-define=ADMOB_IOS_BANNER_ID=$BANNER"
           [ -n "$INTERSTITIAL" ] && args="$args --dart-define=ADMOB_IOS_INTERSTITIAL_ID=$INTERSTITIAL"
+          # Alarms go to readalarm.net; iPhone push stays off (SideStore
+          # apps can't receive pushes).
+          [ -n "$READALARM_API_URL" ] && args="$args --dart-define=READALARM_API_URL=$READALARM_API_URL"
+          [ -n "$READALARM_API_KEY" ] && args="$args --dart-define=READALARM_API_KEY=$READALARM_API_KEY"
           echo "AD_ARGS=$args" >> "$GITHUB_ENV"
 
       - name: Build for iPhone (unsigned)
@@ -183,6 +221,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned: newer releases deprecate package:flutter/material.dart,
+          # which fails "flutter analyze". Raise it when the app migrates.
+          flutter-version: 3.47.9
           cache: true
 
       - name: Build the past-onboarding APK
@@ -229,6 +270,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned: newer releases deprecate package:flutter/material.dart,
+          # which fails "flutter analyze". Raise it when the app migrates.
+          flutter-version: 3.47.9
           cache: true
 
       - name: Install dependencies

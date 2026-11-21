@@ -1,14 +1,17 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../models/reading_alarm.dart';
+import 'event_log.dart';
 
 /// What a ringing alarm needs to know, carried in the notification payload
 /// so it also works after the app was killed or the phone rebooted.
@@ -109,6 +112,15 @@ abstract class AlarmScheduler {
 
   /// Ids of alarms that still have a future ring scheduled.
   Future<Set<String>> pendingAlarmIds();
+
+  /// A push from ReadAlarm's server says an alarm is due (data from
+  /// server/src/Fcm.php). Rings it unless it already rang or was handled.
+  /// Returns whether it rang.
+  Future<bool> ringFromPush(Map<String, dynamic> data);
+
+  /// The user opened, silenced or snoozed [alarmId]'s ring: a push for
+  /// it arriving soon after mustn't ring it again.
+  Future<void> markHandled(String alarmId);
 
   /// Whether Android itself holds each of [alarm]'s rings, by day label
   /// ('Mon', 'Once'), or null if it can't be asked. The plugin's own list
@@ -251,6 +263,84 @@ Future<void> _ringWeekly(FlutterLocalNotificationsPlugin plugin,
   );
 }
 
+// ---- Pushes from the server ----------------------------------------------
+
+Future<File> _handledFile() async => File(
+    '${(await getApplicationSupportDirectory()).path}/alarms_handled.json');
+
+/// When each alarm's ring was last opened, silenced or snoozed.
+Future<Map<String, int>> _handled() async {
+  try {
+    final file = await _handledFile();
+    if (!file.existsSync()) return {};
+    return (jsonDecode(await file.readAsString()) as Map).cast<String, int>();
+  } catch (_) {
+    return {};
+  }
+}
+
+Future<void> _markHandled(String alarmId) async {
+  try {
+    final handled = await _handled();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    handled[alarmId] = now;
+    // A day is plenty: pushes older than 15 minutes aren't sent.
+    handled.removeWhere(
+        (_, at) => now - at > const Duration(days: 1).inMilliseconds);
+    await (await _handledFile()).writeAsString(jsonEncode(handled));
+  } catch (e) {
+    debugPrint('Recording a handled alarm failed: $e');
+  }
+}
+
+/// Rings the alarm a push names, with the same notification id as the
+/// phone's own ring: if that showed already, or the user already dealt
+/// with it, nothing happens; if it shows later, it replaces this one.
+Future<bool> _ringFromPush(
+    FlutterLocalNotificationsPlugin plugin, Map<String, dynamic> data) async {
+  if (data['type'] != 'alarm') return false;
+  final payload = AlarmPayload.decode(data['payload'] as String?);
+  if (payload == null) return false;
+  final slot = int.tryParse('${data['slot']}') ?? _onceSlot;
+  final due = int.tryParse('${data['due']}') ?? 0;
+  final id = _notificationId(payload.alarmId, slot);
+  final late = DateTime.now()
+      .difference(DateTime.fromMillisecondsSinceEpoch(due))
+      .inSeconds;
+  try {
+    final active = await plugin.getActiveNotifications();
+    if (active.any((n) => n.id == id)) {
+      logEvent('Push for alarm ${payload.alarmId}: it is ringing already');
+      return false;
+    }
+  } catch (_) {
+    // Can't tell (older Android): the handled check below still applies.
+  }
+  final handledAt = (await _handled())[payload.alarmId];
+  if (handledAt != null &&
+      handledAt >= due - const Duration(minutes: 5).inMilliseconds) {
+    logEvent('Push for alarm ${payload.alarmId}: already dealt with');
+    return false;
+  }
+  await plugin.show(
+    id: id,
+    title: payload.title,
+    body: payload.body,
+    notificationDetails: _alarmDetails(),
+    payload: payload.encode(),
+  );
+  logEvent('Push for alarm ${payload.alarmId}: the phone had not rung it, '
+      'ringing now (${late}s after its time)');
+  return true;
+}
+
+/// For a push that arrived while ReadAlarm was closed (push_service.dart).
+Future<bool> ringFromPushInBackground(Map<String, dynamic> data) async {
+  final plugin = FlutterLocalNotificationsPlugin();
+  await plugin.initialize(settings: _initSettings);
+  return _ringFromPush(plugin, data);
+}
+
 /// Removes the ringing notification(s) of [alarmId], stopping the sound.
 ///
 /// Matched by notification id: Android doesn't return a showing
@@ -259,6 +349,7 @@ Future<void> _ringWeekly(FlutterLocalNotificationsPlugin plugin,
 /// future repeats, so weekly rings are put back afterwards.
 Future<void> _silence(FlutterLocalNotificationsPlugin plugin, String alarmId,
     {AlarmPayload? payload}) async {
+  await _markHandled(alarmId);
   final ids = {
     for (var slot = 0; slot <= _snoozeSlot; slot++)
       _notificationId(alarmId, slot),
@@ -399,6 +490,13 @@ class NotificationAlarmScheduler implements AlarmScheduler {
 
   @override
   Future<void> dismiss(String alarmId) => _silence(_plugin, alarmId);
+
+  @override
+  Future<bool> ringFromPush(Map<String, dynamic> data) =>
+      _ringFromPush(_plugin, data);
+
+  @override
+  Future<void> markHandled(String alarmId) => _markHandled(alarmId);
 
   static const _diagnostics = MethodChannel('readalarm/diagnostics');
 

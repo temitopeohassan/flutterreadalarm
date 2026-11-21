@@ -474,6 +474,9 @@ class AppState extends ChangeNotifier {
     }
     _changed();
     await _schedule(alarm);
+    // To the server, which sends a push when it's due (not awaited: the
+    // alarm is set on the phone either way).
+    unawaited(services.backend.saveAlarm(alarm));
   }
 
   /// Saves an alarm from the editor, enforcing the free alarm limit, one
@@ -524,6 +527,7 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('Cancelling alarm failed: $e');
     }
+    unawaited(services.backend.deleteAlarm(alarm.id));
   }
 
   Future<void> _schedule(ReadingAlarm alarm) async {
@@ -571,6 +575,8 @@ class AppState extends ChangeNotifier {
           '${alarm.scheduleLabel}, next ${alarm.nextOccurrence(now)}');
     }
     _changed();
+    // The server gets them all too, catching up on changes made offline.
+    unawaited(services.backend.syncAlarms(List.of(alarms)));
   }
 
   /// Puts back any alarms the system dropped while the app was away.
@@ -602,6 +608,8 @@ class AppState extends ChangeNotifier {
   void openAlarm(AlarmLaunch launch) {
     final p = launch.payload;
     logEvent('Alarm ${p.alarmId} opened (${launch.action.name})');
+    // Its push from the server, if still to come, mustn't ring it again.
+    unawaited(services.alarms.markHandled(p.alarmId));
     final book = _findBook(p.bookId);
     if (book == null) {
       logEvent('Alarm ${p.alarmId}: its book is no longer in the library');
