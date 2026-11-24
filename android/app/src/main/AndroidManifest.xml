@@ -1,9 +1,14 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Alarms: exact timing, ringing over the lock screen, surviving reboot. -->
     <!-- Alarms are sent to readalarm.net, which pushes when one is due. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Android 13+: granted at install to alarm-clock apps, and can't be
+         revoked. Google Play asks alarm apps to declare it (Play Console →
+         App content → Exact alarm permission). -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -56,6 +61,37 @@
         </receiver>
         <receiver android:exported="false"
             android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
+
+        <!-- Reading alarms (AlarmEngine.kt): the alarm clock going off,
+             Snooze, and putting alarms back after a reboot, an update, a
+             clock change, or exact alarms being allowed again. -->
+        <receiver android:name=".AlarmReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <!-- Rings an alarm natively: sound, vibration, full-screen alert. -->
+        <service
+            android:name=".AlarmRingService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
+        <!-- Pushes from readalarm.net ring alarms natively (PushService.kt),
+             instead of through firebase_messaging's Dart handler. -->
+        <service
+            android:name=".PushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <service
+            android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService"
+            tools:node="remove" />
 
         <!-- flutter_foreground_task: keeps a reading session alive. -->
         <service

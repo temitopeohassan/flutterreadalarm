@@ -18,8 +18,6 @@ import java.util.Locale
 
 /** What the phone says about ReadAlarm, for diagnostics reports. */
 object Diagnostics {
-    private const val RECEIVER =
-        "com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
 
     private fun time(ms: Long): String =
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(ms))
@@ -86,8 +84,8 @@ object Diagnostics {
         line(lines, "Notifications allowed") { notifications.areNotificationsEnabled() }
         line(lines, "Alarm channel") {
             if (Build.VERSION.SDK_INT >= 26) {
-                val channel = notifications.getNotificationChannel("reading_alarms")
-                if (channel == null) "not created yet" else "importance ${channel.importance} (4+ rings and pops up; 0 = off)"
+                val channel = notifications.getNotificationChannel("alarm_ringing")
+                if (channel == null) "not created yet (made at the first ring)" else "importance ${channel.importance} (4+ pops up; 0 = off)"
             } else {
                 "n/a"
             }
@@ -100,6 +98,13 @@ object Diagnostics {
             if (next == null) "none" else "${time(next.triggerTime)} by ${next.showIntent?.creatorPackage ?: "?"}"
         }
 
+        lines += ""
+        lines += "ALARM ENGINE (alarm clocks held by Android)"
+        lines += AlarmEngine.describe(context)
+        lines += "Ringing now: ${AlarmRingService.ringingId ?: "no"}"
+        lines += ""
+        lines += "ALARM ENGINE LOG (whether alarms rang, and how)"
+        lines += AlarmEngine.logText(context).ifEmpty { "Nothing yet." }
         lines += ""
         lines += "WHY READALARM WAS LAST CLOSED (newest first)"
         if (Build.VERSION.SDK_INT >= 30) {
@@ -144,15 +149,8 @@ object Diagnostics {
      * notification plugin keeps its own list, which survives the phone
      * removing the app's alarms; this asks Android itself.
      */
-    fun isRegistered(context: Context, id: Int): Boolean {
-        val intent = Intent().setComponent(ComponentName(context, RECEIVER))
-        return PendingIntent.getBroadcast(
-            context,
-            id,
-            intent,
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
-        ) != null
-    }
+    /** Whether Android holds the alarm clock for [id]. */
+    fun isRegistered(context: Context, id: Int): Boolean = AlarmEngine.isRegistered(context, id)
 
     /** The app's recent log lines (an app can read only its own). */
     fun logcat(lines: Int): String = try {

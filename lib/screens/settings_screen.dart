@@ -155,21 +155,6 @@ class SettingsScreen extends StatelessWidget {
                                   child: const Text('Fix'),
                                 ),
                         ),
-                      ListTile(
-                        leading: const Icon(Icons.timer_outlined,
-                            color: AppColors.navy),
-                        title: const Text('Run 1-minute test alarm'),
-                        onTap: () async {
-                          final scheduled = await state.scheduleTestAlarm();
-                          if (!context.mounted) return;
-                          showSnack(
-                              context,
-                              scheduled
-                                  ? 'Test alarm set for 1 minute from now. '
-                                      'Lock your phone.'
-                                  : 'Add a book in Library first.');
-                        },
-                      ),
                     ],
                   ),
                 ),

@@ -531,3 +531,155 @@ class NotificationAlarmScheduler implements AlarmScheduler {
     }
   }
 }
+
+/// Android: alarms in ReadAlarm's native alarm engine (AlarmEngine.kt).
+/// Each ring is an alarm clock (AlarmManager.setAlarmClock), which phones
+/// let through even when the app was closed. At the alarm time the engine
+/// rings natively (sound, full-screen alert) before Flutter starts, then
+/// opens ReadAlarm, which gets the alarm through [init]'s callback or
+/// [takeLaunch]. Pushes from readalarm.net ring natively too
+/// (PushService.kt).
+class NativeAlarmScheduler implements AlarmScheduler {
+  static const _channel = MethodChannel('readalarm/alarms');
+
+  @override
+  Future<void> init(void Function(AlarmLaunch launch) onLaunch) async {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method != 'launch') return;
+      final launch = _toLaunch(call.arguments);
+      if (launch != null) onLaunch(launch);
+    });
+    // Earlier versions scheduled through the notification plugin: remove
+    // those so nothing rings twice.
+    try {
+      final plugin = FlutterLocalNotificationsPlugin();
+      await plugin.initialize(settings: _initSettings);
+      await plugin.cancelAllPendingNotifications();
+    } catch (e) {
+      debugPrint('Removing old scheduled notifications failed: $e');
+    }
+  }
+
+  AlarmLaunch? _toLaunch(Object? data) {
+    if (data is! Map) return null;
+    final payload = AlarmPayload.decode(data['payload'] as String?);
+    if (payload == null) return null;
+    final action = switch (data['action']) {
+      'start' => AlarmAction.start,
+      'snooze' => AlarmAction.snooze,
+      _ => AlarmAction.open,
+    };
+    return AlarmLaunch(payload, action);
+  }
+
+  Future<T?> _call<T>(String method, [Object? args]) async {
+    try {
+      return await _channel.invokeMethod<T>(method, args);
+    } catch (e) {
+      logEvent('ERROR alarms $method: $e');
+      return null;
+    }
+  }
+
+  @override
+  Future<AlarmLaunch?> takeLaunch() async =>
+      _toLaunch(await _call<Object?>('takeLaunch'));
+
+  Map<String, Object?> _entry(int id, AlarmPayload payload,
+          {int weekday = 0, int hour = 0, int minute = 0, DateTime? at}) =>
+      {
+        'id': id,
+        'weekday': weekday,
+        'hour': hour,
+        'minute': minute,
+        'at': at?.millisecondsSinceEpoch ?? 0,
+        'payload': payload.encode(),
+        'title': payload.title,
+        'body': payload.body,
+      };
+
+  @override
+  Future<void> schedule(ReadingAlarm alarm) async {
+    if (!alarm.enabled) return cancel(alarm.id);
+    final payload = AlarmPayload.forAlarm(alarm);
+    final now = DateTime.now();
+    // Setting an id again replaces it (without stopping a ring that's
+    // going off), so only the slots this alarm no longer uses are cancelled.
+    final slots = alarm.repeatDays.isEmpty ? {_onceSlot} : alarm.repeatDays;
+    await _call<void>('cancel', {
+      'ids': [
+        for (var slot = 0; slot < _snoozeSlot; slot++)
+          if (!slots.contains(slot)) _notificationId(alarm.id, slot),
+      ],
+    });
+    final entries = <Map<String, Object?>>[];
+    if (alarm.repeatDays.isEmpty) {
+      final at = alarm.nextOccurrence(now);
+      if (!at.isAfter(now)) return; // A dated one-off whose day has passed.
+      entries
+          .add(_entry(_notificationId(alarm.id, _onceSlot), payload, at: at));
+    } else {
+      for (final day in alarm.repeatDays) {
+        // Monday = 1 … Sunday = 7 natively.
+        entries.add(_entry(_notificationId(alarm.id, day), payload,
+            weekday: day + 1,
+            hour: alarm.time.hour,
+            minute: alarm.time.minute));
+      }
+    }
+    await _call<void>('set', {'entries': entries});
+  }
+
+  List<int> _allIds(String alarmId) => [
+        for (var slot = 0; slot <= _snoozeSlot; slot++)
+          _notificationId(alarmId, slot),
+      ];
+
+  @override
+  Future<void> cancel(String alarmId) =>
+      _call<void>('cancel', {'ids': _allIds(alarmId)});
+
+  @override
+  Future<void> scheduleOnce(AlarmPayload payload, DateTime at) =>
+      _call<void>('set', {
+        'entries': [
+          _entry(_notificationId(payload.alarmId, _snoozeSlot), payload,
+              at: at),
+        ],
+      });
+
+  @override
+  Future<void> dismiss(String alarmId) async {
+    await _markHandled(alarmId);
+    await _call<void>('dismiss', {'ids': _allIds(alarmId)});
+  }
+
+  @override
+  Future<Set<String>> pendingAlarmIds() async {
+    final pending = await _call<List<Object?>>('pending') ?? const [];
+    return {
+      for (final p in pending)
+        if (AlarmPayload.decode(p as String?) case final payload?)
+          payload.alarmId,
+    };
+  }
+
+  @override
+  Future<Map<String, bool>?> heldByAndroid(ReadingAlarm alarm) async {
+    final ids = alarmNotificationIds(alarm)..remove('Snooze');
+    final held =
+        await _call<List<Object?>>('registered', {'ids': ids.values.toList()});
+    if (held == null || held.length != ids.length) return null;
+    final labels = ids.keys.toList();
+    return {
+      for (var i = 0; i < labels.length; i++) labels[i]: held[i] == true,
+    };
+  }
+
+  /// Pushes are rung natively on Android (PushService.kt).
+  @override
+  Future<bool> ringFromPush(Map<String, dynamic> data) async => false;
+
+  @override
+  Future<void> markHandled(String alarmId) => _markHandled(alarmId);
+}

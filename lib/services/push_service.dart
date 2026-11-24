@@ -78,13 +78,27 @@ class FirebasePushService implements PushService {
       return;
     }
     try {
-      await Firebase.initializeApp(options: options);
-      FirebaseMessaging.onBackgroundMessage(onBackgroundPush);
+      final android = defaultTargetPlatform == TargetPlatform.android;
+      if (android) {
+        // Firebase already started natively from the build's resources
+        // (android/app/build.gradle.kts); otherwise start it here.
+        try {
+          await Firebase.initializeApp();
+        } catch (_) {
+          await Firebase.initializeApp(options: options);
+        }
+      } else {
+        await Firebase.initializeApp(options: options);
+      }
       final messaging = FirebaseMessaging.instance;
       // iPhone asks; Android uses the notification permission from setup.
       await messaging.requestPermission(alert: true, sound: true, badge: true);
-      // While ReadAlarm is open: ring it if the phone's alarm didn't.
-      FirebaseMessaging.onMessage.listen((m) => alarms.ringFromPush(m.data));
+      if (!android) {
+        // Android rings pushes natively (PushService.kt), even when
+        // ReadAlarm is closed; iPhone through Flutter.
+        FirebaseMessaging.onBackgroundMessage(onBackgroundPush);
+        FirebaseMessaging.onMessage.listen((m) => alarms.ringFromPush(m.data));
+      }
       // The classic registration token, which the server's send call
       // (FCM HTTP v1, message.token) takes. firebase_messaging 17 marks it
       // deprecated in favour of installation ids; it still works.

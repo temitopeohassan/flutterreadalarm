@@ -96,6 +96,13 @@ jobs:
             value="${!name}"
             if [ -n "$value" ]; then args="$args --dart-define=$name=$value"; fi
           done
+          # Firebase also starts natively (android/app/build.gradle.kts).
+          {
+            echo "ORG_GRADLE_PROJECT_firebaseAppId=$FIREBASE_APP_ID"
+            echo "ORG_GRADLE_PROJECT_firebaseApiKey=$FIREBASE_API_KEY"
+            echo "ORG_GRADLE_PROJECT_firebaseProjectId=$FIREBASE_PROJECT_ID"
+            echo "ORG_GRADLE_PROJECT_firebaseSenderId=$FIREBASE_SENDER_ID"
+          } >> "$GITHUB_ENV"
           echo "AD_ARGS=$args" >> "$GITHUB_ENV"
 
       - name: Build release APKs (one per ABI)

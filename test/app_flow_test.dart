@@ -55,8 +55,7 @@ void main() {
     }
   });
 
-  testWidgets('onboarding: permissions, first book, test alarm, paywall',
-      (tester) async {
+  testWidgets('onboarding: permissions, first book, paywall', (tester) async {
     final (state, fakes) =
         await demoState(onboardingDone: false, emptyLibrary: true);
     await tester.pumpWidget(ReadAlarmApp(state: state));
@@ -102,10 +101,8 @@ void main() {
     await tapText(tester, 'Done');
     expect(state.books.single.title, 'The Quiet Morning');
 
-    await tapText(tester, 'Run 1-minute test alarm');
-    expect(fakes.alarms.once.single.$1.bookId, state.books.single.id);
-    expect(find.text('Test alarm scheduled'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 5)); // Let the snackbar go.
+    // No test alarm any more: it only proved alarms ring while the app runs.
+    expect(find.textContaining('test alarm'), findsNothing);
 
     // The paywall offers Premium (no free trial) or the free version.
     await tapText(tester, 'Finish setup');
@@ -441,7 +438,7 @@ void main() {
     await close(tester, state);
   });
 
-  testWidgets('settings: voice preview and test alarm', (tester) async {
+  testWidgets('settings: voice preview', (tester) async {
     final (state, fakes) = await demoState(premium: true);
     await tester.pumpWidget(ReadAlarmApp(state: state));
     await tapText(tester, 'Settings');
@@ -450,8 +447,7 @@ void main() {
     expect(fakes.speech.spoken.single, contains('ReadAlarm'));
     await tester.pump(const Duration(seconds: 3));
 
-    await tapText(tester, 'Run 1-minute test alarm');
-    expect(fakes.alarms.once, hasLength(1));
+    expect(find.textContaining('test alarm'), findsNothing);
     await close(tester, state);
   });
 

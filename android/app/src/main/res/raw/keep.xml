@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Notification icons are looked up by name at runtime; stop R8 removing them. -->
+<!-- Looked up by name at runtime: stop R8 removing them. The alarm sound
+     is played by AlarmRingService. -->
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@drawable/ic_stat_readalarm" />
+    tools:keep="@drawable/ic_stat_readalarm,@raw/readalarm_alarm" />

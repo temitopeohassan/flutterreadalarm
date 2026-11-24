@@ -130,6 +130,19 @@ flutter test screenshot_test
 | --- | --- | --- | --- |
 | ![Welcome](screenshots/01_onboarding_welcome.png) | ![Home](screenshots/13_home.png) | ![Set alarm](screenshots/17_set_alarm.png) | ![Now playing](screenshots/19_now_playing.png) |
 
+## Alarms on Android
+
+Alarms are alarm clocks (`AlarmManager.setAlarmClock`) in ReadAlarm's
+native engine (`android/app/src/main/kotlin/.../AlarmEngine.kt`). At the
+alarm time a broadcast starts `AlarmRingService`, which plays the alarm
+sound on the alarm volume and shows a full-screen alert before Flutter
+starts, then opens ReadAlarm. If a phone blocks that broadcast, a second
+alarm clock 20 seconds later opens ReadAlarm's screen directly, and a push
+from readalarm.net a minute later rings it natively (`PushService.kt`).
+Each ring sounds once. Alarms are put back after a reboot, an update, a
+clock change and when exact alarms are allowed again; `USE_EXACT_ALARM`
+keeps them exact on Android 13+ (declare it in Play Console).
+
 ## Push from readalarm.net
 
 Every alarm is also sent to ReadAlarm's server (`server/`, PHP + MySQL at
