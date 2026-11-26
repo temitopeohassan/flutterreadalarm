@@ -97,8 +97,6 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await _shot(tester, '09_import_sheet_ready');
     await tapText(tester, 'Done');
-    await tapText(tester, 'Run 1-minute test alarm');
-    await tester.pump(const Duration(seconds: 5)); // Let the snackbar go.
     await _shot(tester, '10_onboarding_first_book_added');
 
     await tapText(tester, 'Finish setup');

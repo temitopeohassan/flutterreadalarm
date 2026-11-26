@@ -585,25 +585,6 @@ class AppState extends ChangeNotifier {
     await _syncAlarms();
   }
 
-  /// Rings in one minute with a 1-minute session of the last-read book.
-  /// Returns false if there's no book yet.
-  Future<bool> scheduleTestAlarm() async {
-    final book = lastReadBook;
-    if (book == null) return false;
-    await services.alarms.scheduleOnce(
-      AlarmPayload(
-        alarmId: 'test',
-        bookId: book.id,
-        durationMin: 1,
-        title: 'Test alarm',
-        body: '${book.title} · Read 1 min',
-      ),
-      DateTime.now().add(const Duration(minutes: 1)),
-    );
-    logEvent('Test alarm set for 1 minute from now');
-    return true;
-  }
-
   /// Handles a ringing alarm the user opened or acted on.
   void openAlarm(AlarmLaunch launch) {
     final p = launch.payload;

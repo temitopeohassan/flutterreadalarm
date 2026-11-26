@@ -28,6 +28,17 @@ class AutoStart(private val activity: Activity) {
     /** Counts the activity's onStop calls (MainActivity reports them). */
     var stops = 0
 
+    /** Whether ReadAlarm's screen is paused: another screen is in front. */
+    private var paused = false
+
+    fun onPause() {
+        paused = true
+    }
+
+    fun onResume() {
+        paused = false
+    }
+
     private class Try(val intent: Intent, val kind: String)
 
     /**
@@ -65,16 +76,28 @@ class AutoStart(private val activity: Activity) {
         }
         val t = tries[i]
         val name = t.intent.component?.flattenToShortString() ?: t.intent.action ?: t.intent.`package` ?: "?"
+        // Only screens this phone has and lets other apps open: starting one
+        // that isn't exported fails, or shows nothing.
+        val info = try {
+            activity.packageManager.resolveActivity(t.intent, 0)?.activityInfo
+        } catch (e: Exception) {
+            null
+        }
+        if (info == null || !info.exported || info.permission != null) {
+            if (info != null) log += "$name not open to other apps"
+            return tryNext(tries, i + 1, log, done)
+        }
         val before = stops
         try {
             activity.startActivity(t.intent)
         } catch (e: Exception) {
-            // Not on this phone, or not open to other apps: next, at once.
-            if (e is SecurityException) log += "$name not allowed"
+            log += "$name refused (${e.javaClass.simpleName})"
             return tryNext(tries, i + 1, log, done)
         }
         Handler(Looper.getMainLooper()).postDelayed({
-            if (stops > before || !activity.hasWindowFocus()) {
+            // Opened: ReadAlarm's screen went behind another and stays
+            // there. (A screen that closed itself at once gives it back.)
+            if (stops > before || paused || !activity.hasWindowFocus()) {
                 log += "opened $name"
                 done(mapOf("kind" to t.kind, "log" to log.joinToString("; ")))
             } else {
@@ -128,7 +151,9 @@ class AutoStart(private val activity: Activity) {
 
     companion object {
         /** How long a screen gets to show before the next is tried. */
-        private const val SHOW_WAIT_MS = 1_500L
+        // Phone managers on slow phones can take a couple of seconds to
+        // start (Phone Master first shows an advert).
+        private const val SHOW_WAIT_MS = 3_000L
 
         private val AUTO_START_NAME = Regex("(?i)auto.?start|autoboot|auto.?launch|startup|bootstart|chainlaunch")
 
@@ -137,6 +162,9 @@ class AutoStart(private val activity: Activity) {
             "com.transsion.phonemaster" to "com.cyin.himgr.autostart.AutoStartActivity",
             "com.transsion.phonemanager" to "com.cyin.himgr.autostart.AutoStartActivity",
             "com.itel.autobootmanager" to "com.itel.autobootmanager.activity.AutoBootMgrActivity",
+            "com.itel.autobootmanager" to "com.itel.autobootmanager.activity.AutoBootManagerActivity",
+            // Phone Master's main screen, when its auto-start screen won't open.
+            "com.transsion.phonemaster" to "com.cyin.himgr.MainActivity",
             // Xiaomi, Redmi, Poco
             "com.miui.securitycenter" to "com.miui.permcenter.autostart.AutoStartManagementActivity",
             // Oppo, Realme, OnePlus (ColorOS / OxygenOS)

@@ -52,7 +52,11 @@ class AppServices {
     return AppServices(
       storage: await FileAppStorage.open(),
       speech: TtsSpeechEngine(),
-      alarms: NotificationAlarmScheduler(),
+      // Android: the native alarm engine (alarm clocks that ring before
+      // Flutter starts). iPhone: notifications.
+      alarms: defaultTargetPlatform == TargetPlatform.android
+          ? NativeAlarmScheduler()
+          : NotificationAlarmScheduler(),
       permissions: AndroidPermissionService(),
       playback: ForegroundPlaybackService(),
       importer: DeviceBookImporter(),

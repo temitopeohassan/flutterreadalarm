@@ -19,6 +19,11 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
+    // Firebase's settings as Android resources (resValue below).
+    buildFeatures {
+        resValues = true
+    }
+
     compileOptions {
         // Required by flutter_local_notifications for scheduled alarms.
         isCoreLibraryDesugaringEnabled = true
@@ -47,6 +52,19 @@ android {
             (project.findProperty("admobAppId") as String?)
                 ?.takeIf { it.isNotBlank() }
                 ?: "ca-app-pub-3940256099942544~3347511713"
+
+        // Firebase starts natively from these resources (what the
+        // google-services plugin would generate from google-services.json),
+        // so a push can wake ReadAlarm and ring an alarm before Flutter
+        // starts. From -PfirebaseAppId=... etc.; CI passes the
+        // FIREBASE_* secrets. Without them, no push.
+        fun prop(name: String) = (project.findProperty(name) as String?)?.trim() ?: ""
+        if (prop("firebaseAppId").isNotEmpty()) {
+            resValue("string", "google_app_id", prop("firebaseAppId"))
+            resValue("string", "google_api_key", prop("firebaseApiKey"))
+            resValue("string", "project_id", prop("firebaseProjectId"))
+            resValue("string", "gcm_defaultSenderId", prop("firebaseSenderId"))
+        }
     }
 
     signingConfigs {
@@ -92,4 +110,7 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // PushService.kt (the same Firebase release as firebase_core 5.2.0).
+    implementation(platform("com.google.firebase:firebase-bom:35.2.0"))
+    implementation("com.google.firebase:firebase-messaging")
 }

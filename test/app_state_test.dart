@@ -222,20 +222,6 @@ void main() {
       state.dispose();
     });
 
-    test('the test alarm rings in a minute with the last-read book', () async {
-      final (state, fakes) = await demoState();
-      expect(await state.scheduleTestAlarm(), isTrue);
-      final (payload, at) = fakes.alarms.once.single;
-      expect(payload.bookId, state.lastReadBook!.id);
-      expect(payload.durationMin, 1);
-      expect(at.difference(DateTime.now()).inSeconds, closeTo(60, 2));
-      state.dispose();
-
-      final (empty, _) = await demoState(emptyLibrary: true);
-      expect(await empty.scheduleTestAlarm(), isFalse);
-      empty.dispose();
-    });
-
     test('opening a ringing alarm switches off a one-off alarm', () async {
       final (state, fakes) = await demoState(premium: true);
       final once = ReadingAlarm(
