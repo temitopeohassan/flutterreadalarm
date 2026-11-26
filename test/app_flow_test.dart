@@ -340,7 +340,11 @@ void main() {
     // No switch in Settings to turn Premium on or off.
     await tapText(tester, 'Settings');
     expect(find.text('Test mode: Premium'), findsNothing);
-    expect(find.byType(SwitchListTile), findsNothing);
+    expect(find.widgetWithText(SwitchListTile, 'Premium'), findsNothing);
+    // The one switch there: Keep alarms ready (on for this Tecno).
+    expect(find.widgetWithText(SwitchListTile, 'Keep alarms ready'),
+        findsOneWidget);
+    expect(state.keepAlarmsReady, isTrue);
     await close(tester, state);
   });
 

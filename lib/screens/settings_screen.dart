@@ -155,6 +155,21 @@ class SettingsScreen extends StatelessWidget {
                                   child: const Text('Fix'),
                                 ),
                         ),
+                      // Android: keeps the phone from closing ReadAlarm,
+                      // which drops its alarms (AlarmKeeper.kt).
+                      if (!onIOS)
+                        SwitchListTile(
+                          secondary: const Icon(Icons.shield_moon_outlined,
+                              color: AppColors.navy),
+                          title: const Text('Keep alarms ready'),
+                          subtitle: const Text(
+                              'A quiet "Next reading" notification, so your '
+                              'phone doesn\'t close ReadAlarm and lose its '
+                              'alarms'),
+                          value: state.keepAlarmsReady,
+                          activeTrackColor: AppColors.orange,
+                          onChanged: state.setKeepAlarmsReady,
+                        ),
                     ],
                   ),
                 ),

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -23,7 +24,7 @@ class BackendConfig {
       defaultValue: 'https://readalarm.net');
   static const apiKey = String.fromEnvironment('READALARM_API_KEY');
   static const appVersion =
-      String.fromEnvironment('READALARM_VERSION', defaultValue: '0.1.0');
+      String.fromEnvironment('READALARM_VERSION', defaultValue: '0.1.1');
 }
 
 abstract class BackendService {
@@ -101,14 +102,19 @@ class HttpBackend implements BackendService {
     }
     if (identity['id'] is! String || identity['secret'] is! String) {
       identity = {'id': _uuid(), 'secret': _randomHex(32)};
-      await file.writeAsString(jsonEncode(identity));
     }
+    // For the native retry (ServerSync in AlarmWatchdog.kt), which can't
+    // read the build settings.
+    identity['url'] = BackendConfig.url;
+    identity['api_key'] = BackendConfig.apiKey;
+    identity['app_version'] = BackendConfig.appVersion;
+    await file.writeAsString(jsonEncode(identity));
     return HttpBackend._(file, identity);
   }
 
   final File _file;
   final Map<String, Object?> _identity;
-  final _client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+  final _client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
   String? _timezone;
   String _status = 'Not contacted yet';
 
@@ -147,7 +153,7 @@ class HttpBackend implements BackendService {
     try {
       final request = await _client
           .postUrl(Uri.parse('${BackendConfig.url}/api/v1/$endpoint'))
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 30));
       request.headers.contentType = ContentType.json;
       if (BackendConfig.apiKey.isNotEmpty) {
         request.headers.set('X-ReadAlarm-Key', BackendConfig.apiKey);
@@ -155,7 +161,7 @@ class HttpBackend implements BackendService {
       request
           .add(utf8.encode(jsonEncode({'device': await _device(), ...body})));
       final response =
-          await request.close().timeout(const Duration(seconds: 20));
+          await request.close().timeout(const Duration(seconds: 30));
       final text = await response.transform(utf8.decoder).join();
       final answer = jsonDecode(text);
       if (response.statusCode != 200 ||
@@ -164,15 +170,39 @@ class HttpBackend implements BackendService {
         final error = answer is Map ? answer['error'] : text;
         _status = '$what refused (${response.statusCode} $error)';
         logEvent('Server: $_status');
+        if (response.statusCode >= 500) await _retryLater();
         return null;
       }
       _status = '$what OK at ${DateTime.now()}';
       return answer.cast<String, Object?>();
     } catch (e) {
       _status = '$what failed (${e.runtimeType})';
-      logEvent('Server: $_status: $e');
+      logEvent('Server: $_status: $e. Retrying when online');
+      await _retryLater();
       return null;
     }
+  }
+
+  static const _alarms = MethodChannel('readalarm/alarms');
+
+  /// The request didn't get through (often: the screen locked mid-request
+  /// and the network slept). Android retries natively once online, with
+  /// growing waits (ServerSync in AlarmWatchdog.kt); every platform also
+  /// catches up at the next start or return to the app.
+  Future<void> _retryLater() async {
+    await _setDirty(true);
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await _alarms.invokeMethod<void>('syncLater');
+    } catch (_) {}
+  }
+
+  Future<void> _setDirty(bool dirty) async {
+    if (_identity['dirty'] == dirty) return;
+    _identity['dirty'] = dirty;
+    try {
+      await _file.writeAsString(jsonEncode(_identity));
+    } catch (_) {}
   }
 
   @override
@@ -200,6 +230,7 @@ class HttpBackend implements BackendService {
       'alarms': [for (final a in alarms) alarmForServer(a, now)],
     });
     if (answer != null) {
+      await _setDirty(false);
       logEvent('Server: ${alarms.length} alarms in step');
     }
   }

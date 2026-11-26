@@ -1,7 +1,7 @@
 name: readalarm
 description: ReadAlarm — locked-screen alarm reader (UI screens).
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.1.1+2
 
 environment:
   sdk: '>=3.4.0 <4.0.0'   # Flutter 3.22+ (uses WidgetStateProperty)

@@ -173,6 +173,11 @@ class FakeAlarms implements AlarmScheduler {
   @override
   Future<void> markHandled(String alarmId) async => handled.add(alarmId);
 
+  bool? standby;
+
+  @override
+  Future<void> setStandby(bool on) async => standby = on;
+
   @override
   Future<Set<String>> pendingAlarmIds() async =>
       {...scheduled.keys, ...stalePending};

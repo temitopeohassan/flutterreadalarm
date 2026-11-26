@@ -15,8 +15,15 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Alarm clocks the phone dropped while ReadAlarm was closed: back.
+        AlarmEngine.watchdog(this, "ReadAlarm opened")
+        AlarmWatchdog.schedule(this)
+        AlarmKeeper.update(this)
         pendingLaunch = launchFrom(intent)
     }
+
+    /** The last alarm handed to Dart, to drop the same one opened twice. */
+    private var lastLaunch: Pair<Int, Long>? = null
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -42,7 +49,14 @@ class MainActivity : FlutterActivity() {
         }
         // Handled once: recreating the screen mustn't ring it again.
         intent?.removeExtra(AlarmEngine.EXTRA_ID)
-        return payload?.let { mapOf("payload" to it, "action" to action) }
+        if (payload == null) return null
+        // The ringing service and its full-screen alert can both open the
+        // screen for the same ring: hand it to Dart once.
+        val now = System.currentTimeMillis()
+        val last = lastLaunch
+        if (action == "open" && last != null && last.first == id && now - last.second < 5_000L) return null
+        lastLaunch = id to now
+        return mapOf("payload" to payload, "action" to action)
     }
 
     override fun onPause() {
@@ -84,6 +98,16 @@ class MainActivity : FlutterActivity() {
                     "registered" -> {
                         val ids = call.argument<List<Int>>("ids") ?: emptyList()
                         result.success(ids.map { id -> AlarmEngine.isRegistered(this, id) })
+                    }
+                    // Settings → Keep alarms ready (AlarmKeeper.kt).
+                    "setStandby" -> {
+                        AlarmKeeper.setEnabled(this, call.argument<Boolean>("on") == true)
+                        result.success(null)
+                    }
+                    // The app couldn't reach readalarm.net: retry natively.
+                    "syncLater" -> {
+                        ServerSync.later(this)
+                        result.success(null)
                     }
                     "takeLaunch" -> {
                         result.success(pendingLaunch)

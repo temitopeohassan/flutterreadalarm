@@ -73,6 +73,38 @@ class AppState extends ChangeNotifier {
   /// The user confirmed following the phone-brand auto-start guide.
   bool autoStartConfirmed = false;
 
+  /// Settings → Keep alarms ready; null: the default for this phone.
+  bool? keepAlarmsReadyChoice;
+
+  /// Brands known to close apps for memory and drop their alarms.
+  static const _strictBrands = [
+    'tecno',
+    'infinix',
+    'itel',
+    'transsion',
+    'xiaomi',
+    'redmi',
+    'poco',
+    'oppo',
+    'realme',
+    'oneplus',
+    'vivo',
+    'iqoo',
+    'huawei',
+    'honor',
+  ];
+
+  /// Whether the alarm standby runs: on by default on [_strictBrands].
+  bool get keepAlarmsReady =>
+      keepAlarmsReadyChoice ?? _strictBrands.any(services.deviceBrand.contains);
+
+  Future<void> setKeepAlarmsReady(bool on) async {
+    keepAlarmsReadyChoice = on;
+    _changed();
+    logEvent('Keep alarms ready: ${on ? 'on' : 'off'}');
+    await services.alarms.setStandby(on);
+  }
+
   final Map<String, bool> permissions = {
     for (final key in permissionKeys) key: false,
   };
@@ -92,6 +124,7 @@ class AppState extends ChangeNotifier {
     await services.speech.init();
     await services.playback.init(state.reader.onCommand);
     await services.alarms.init(state.openAlarm);
+    await services.alarms.setStandby(state.keepAlarmsReady);
     await services.billing.init(state._onBilling);
     unawaited(state.refreshPurchases());
     unawaited(state.loadPrices());
@@ -126,6 +159,7 @@ class AppState extends ChangeNotifier {
         'freeReadDay': _freeReadDay,
         'freeReadSeconds': _freeReadToday.inSeconds,
         'autoStartConfirmed': autoStartConfirmed,
+        'keepAlarmsReady': keepAlarmsReadyChoice,
         'voice': voice?.toMap(),
         'speed': speed,
         'pitch': pitch,
@@ -140,6 +174,7 @@ class AppState extends ChangeNotifier {
     _freeReadDay = json['freeReadDay'] as String? ?? '';
     _freeReadToday = Duration(seconds: json['freeReadSeconds'] as int? ?? 0);
     autoStartConfirmed = json['autoStartConfirmed'] as bool? ?? false;
+    keepAlarmsReadyChoice = json['keepAlarmsReady'] as bool?;
     voice = VoiceOption.fromMap(json['voice']);
     speed = (json['speed'] as num?)?.toDouble() ?? 1.0;
     pitch = (json['pitch'] as num?)?.toDouble() ?? 1.0;
