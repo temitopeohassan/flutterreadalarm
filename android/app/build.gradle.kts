@@ -113,4 +113,6 @@ dependencies {
     // PushService.kt (the same Firebase release as firebase_core 5.2.0).
     implementation(platform("com.google.firebase:firebase-bom:35.2.0"))
     implementation("com.google.firebase:firebase-messaging")
+    // AlarmWatchdog.kt: the 15-minute check and the server retry.
+    implementation("androidx.work:work-runtime:2.10.0")
 }

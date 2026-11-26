@@ -119,10 +119,16 @@ class _OemAutostartScreenState extends State<OemAutostartScreen> {
             'Look for Auto-start management (sometimes under Toolbox or App '
             'management) and turn ReadAlarm on.');
       case AutoStartPage.appInfo:
+        // Phone Master on Tecno, Infinix and itel refuses to be opened by
+        // other apps: say exactly where to go.
         showSnack(
             context,
-            'No separate auto-start page was found on this phone. Open '
-            'Battery and allow ReadAlarm to run in the background.');
+            _brand == 'Tecno / Infinix / itel'
+                ? 'Phone Master won\'t let apps open it. Open Phone Master '
+                    'yourself → Toolbox (or App management) → Auto-start '
+                    'management, and turn ReadAlarm on.'
+                : 'No separate auto-start page was found on this phone. Open '
+                    'Battery and allow ReadAlarm to run in the background.');
     }
   }
 

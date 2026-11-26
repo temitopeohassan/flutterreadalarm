@@ -122,6 +122,10 @@ abstract class AlarmScheduler {
   /// it arriving soon after mustn't ring it again.
   Future<void> markHandled(String alarmId);
 
+  /// "Keep alarms ready": a quiet notification while an alarm is set, so
+  /// the phone doesn't close the app and drop its alarms (Android).
+  Future<void> setStandby(bool on);
+
   /// Whether Android itself holds each of [alarm]'s rings, by day label
   /// ('Mon', 'Once'), or null if it can't be asked. The plugin's own list
   /// survives the phone removing the app's alarms; this asks Android.
@@ -498,6 +502,9 @@ class NotificationAlarmScheduler implements AlarmScheduler {
   @override
   Future<void> markHandled(String alarmId) => _markHandled(alarmId);
 
+  @override
+  Future<void> setStandby(bool on) async {}
+
   static const _diagnostics = MethodChannel('readalarm/diagnostics');
 
   @override
@@ -682,4 +689,7 @@ class NativeAlarmScheduler implements AlarmScheduler {
 
   @override
   Future<void> markHandled(String alarmId) => _markHandled(alarmId);
+
+  @override
+  Future<void> setStandby(bool on) => _call<void>('setStandby', {'on': on});
 }

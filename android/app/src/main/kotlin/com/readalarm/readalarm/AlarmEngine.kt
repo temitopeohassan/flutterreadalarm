@@ -150,6 +150,49 @@ object AlarmEngine {
     fun set(context: Context, e: Entry) {
         prefs(context).edit().putString("${e.id}", e.toJson()).apply()
         arm(context, e)
+        changed(context)
+    }
+
+    /** The soonest ring of all stored alarms, or null if none is set. */
+    fun nextRing(context: Context): Long? = stored(context).mapNotNull { nextTrigger(it) }.minOrNull()
+
+    /** The alarms changed: keep the watchdog and the standby in step. */
+    private fun changed(context: Context) {
+        AlarmWatchdog.schedule(context)
+        AlarmKeeper.update(context)
+    }
+
+    /** How far back the watchdog rings an alarm that didn't ring. */
+    private const val CATCH_UP_MS = 15 * 60_000L
+
+    /**
+     * Puts back alarm clocks the phone dropped (Tecno and others drop them
+     * when they close the app for memory), and rings an alarm whose time
+     * passed in the last 15 minutes without ringing. Run every 15 minutes
+     * ([AlarmWatchdog]) and when ReadAlarm opens.
+     */
+    fun watchdog(context: Context, reason: String) {
+        val list = stored(context)
+        val dropped = list.count { !isRegistered(context, it.id) }
+        val stats = rung(context).edit().putLong("watchdog_at", System.currentTimeMillis())
+        if (dropped > 0) {
+            val times = rung(context).getInt("dropped_times", 0) + 1
+            stats.putInt("dropped_times", times).putLong("dropped_at", System.currentTimeMillis())
+                .putInt("dropped_last", dropped)
+            log(context, "Found $dropped of ${list.size} alarm clocks dropped by the phone ($reason): putting them back")
+        }
+        stats.apply()
+        val now = System.currentTimeMillis()
+        val armed = rung(context)
+        for (e in list) {
+            // The ring it was set for passed recently and didn't sound.
+            val due = armed.getLong("armed_${e.id}", 0L)
+            if (due in (now - CATCH_UP_MS)..now) {
+                log(context, "Alarm ${e.id}: its ${java.util.Date(due)} ring didn't sound ($reason)")
+                ring(context, e.id, Source.WATCHDOG, due)
+            }
+        }
+        if (dropped > 0) rearmAll(context, "dropped by the phone")
     }
 
     private fun arm(context: Context, e: Entry) {
@@ -187,12 +230,14 @@ object AlarmEngine {
     fun cancel(context: Context, id: Int) {
         disarm(context, id)
         prefs(context).edit().remove("$id").apply()
+        AlarmKeeper.update(context)
     }
 
     /** Puts every stored alarm back (after a reboot or a clock change). */
     fun rearmAll(context: Context, reason: String) {
         log(context, "Putting all alarms back ($reason)")
         for (e in stored(context)) arm(context, e)
+        changed(context)
     }
 
     /** Whether Android holds the alarm clock for [id]. */
@@ -204,6 +249,7 @@ object AlarmEngine {
         ALARM("alarm clock"),
         SCREEN("backup: ReadAlarm's screen opened by Android"),
         PUSH("backup: push from readalarm.net"),
+        WATCHDOG("late: the watchdog found it hadn't rung"),
     }
 
     /**
@@ -217,6 +263,7 @@ object AlarmEngine {
         val e = entry(context, id)
         val lastRang = prefs.getLong("rang_$id", 0L)
         if (Math.abs(lastRang - occurrence) < SAME_RING_MS) {
+            if (source == Source.WATCHDOG) return null
             log(context, "Alarm $id (${source.label}): already rang")
             return null
         }
@@ -237,6 +284,7 @@ object AlarmEngine {
         } else {
             arm(context, e) // Same day next week.
         }
+        changed(context)
         return e.payload
     }
 
@@ -324,7 +372,18 @@ object AlarmEngine {
         if (list.isEmpty()) return "No alarms stored."
         val exact = Build.VERSION.SDK_INT < 31 ||
             context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
-        return "Exact alarms allowed: $exact\n" + list.joinToString("\n") { e ->
+        val r = rung(context)
+        val watchdog = r.getLong("watchdog_at", 0L).let { if (it == 0L) "never" else fmt.format(java.util.Date(it)) }
+        val dropped = r.getInt("dropped_times", 0).let {
+            if (it == 0) "never" else "$it times, last ${fmt.format(java.util.Date(r.getLong("dropped_at", 0L)))} " +
+                "(${r.getInt("dropped_last", 0)} alarm clocks)"
+        }
+        return "Exact alarms allowed: $exact\n" +
+            "Keep alarms ready: ${if (AlarmKeeper.enabled(context)) "on" else "off"}" +
+            (if (AlarmKeeper.running) ", running" else ", not running") + "\n" +
+            "Watchdog last checked: $watchdog\n" +
+            "Phone dropped ReadAlarm's alarm clocks: $dropped\n" +
+            list.joinToString("\n") { e ->
             val next = nextTrigger(e)?.let { fmt.format(java.util.Date(it)) } ?: "none"
             val kind = if (e.weekday == 0) "once" else "weekly day ${e.weekday} ${e.hour}:${"%02d".format(e.minute)}"
             "${e.id}: $kind, next $next, held by Android: ${isRegistered(context, e.id)}"

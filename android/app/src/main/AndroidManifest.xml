@@ -16,6 +16,9 @@
     <!-- Reading aloud with the screen off. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Keep alarms ready (AlarmKeeper.kt): Android 14+ types. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
@@ -80,6 +83,16 @@
             android:name=".AlarmRingService"
             android:foregroundServiceType="mediaPlayback"
             android:exported="false" />
+        <!-- Keep alarms ready (AlarmKeeper.kt): while an alarm is set, keeps
+             ReadAlarm from being closed for memory, which drops its alarms. -->
+        <service
+            android:name=".AlarmKeeperService"
+            android:foregroundServiceType="systemExempted|specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user's scheduled reading alarms ready, so they ring on phones that close background apps." />
+        </service>
         <!-- Pushes from readalarm.net ring alarms natively (PushService.kt),
              instead of through firebase_messaging's Dart handler. -->
         <service
